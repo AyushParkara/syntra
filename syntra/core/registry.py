@@ -412,6 +412,8 @@ class ProviderRegistry:
                 display_name=row.get("display_name", row["name"]),
                 base_url=row["base_url"],
                 api_key=key,
+                credential_state=("no-auth" if key.lower() == "no-auth"
+                                  else "keyed" if key else "missing"),
                 timeout=float(row.get("timeout", 60.0)),
                 extra_headers=extra,
                 allowed_models=tuple(allowed) if allowed else None,

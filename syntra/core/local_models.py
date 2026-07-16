@@ -262,6 +262,7 @@ class LocalModelManager:
             display_name=f"local {model_id}",
             base_url=s.base_url,
             api_key="no-auth",
+            credential_state="no-auth",
             allowed_models=(model_id,),
             kind="openai",
         )

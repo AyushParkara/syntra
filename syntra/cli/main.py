@@ -38,6 +38,7 @@ from ..core.aa_refresh import refresh_catalog, AARefreshError
 from ..core.route_health import RouteHealth
 from ..core.overrides import Overrides
 from ..core import pricing
+from ..core.redact import redact as _redact_output
 from ..providers.openai_compat import ProviderError
 
 
@@ -153,10 +154,13 @@ def _reliability_label(stats, role: str, provider: str, model_id: str) -> str:
 
 
 def _print(s: str = "") -> None:
+    # Never send credential-shaped values to terminal output or the TUI transcript.
+    # Known provider keys are also redacted at provider/network error boundaries.
+    safe = _redact_output(str(s))
     if _OUTPUT_SINK is not None:
-        _OUTPUT_SINK(str(s))
+        _OUTPUT_SINK(safe)
         return
-    sys.stdout.write(s + "\n")
+    sys.stdout.write(safe + "\n")
     sys.stdout.flush()
 
 
@@ -352,9 +356,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     try:
         registry = ProviderRegistry.load()
         ready = registry.ready_endpoints()
-        keyed = sum(1 for e in ready if e.api_key and e.api_key.lower() != "no-auth")
-        noauth = sum(1 for e in ready if e.api_key and e.api_key.lower() == "no-auth")
-        no_key = sum(1 for e in registry.endpoints if not e.api_key)
+        keyed = sum(1 for e in ready if e.credential_state == "keyed")
+        noauth = sum(1 for e in ready if e.credential_state == "no-auth")
+        no_key = sum(1 for e in registry.endpoints if e.credential_state == "missing")
         _ok("providers", f"{len(registry.endpoints)} configured, {keyed} keyed, {noauth} no-auth")
         if no_key > 0:
             _warn("providers", f"{no_key} endpoint(s) have empty api_key (not 'no-auth', not set)")
@@ -523,8 +527,8 @@ def cmd_verify(args: argparse.Namespace) -> int:
     try:
         registry = ProviderRegistry.load()
         ready = registry.ready_endpoints()
-        keyed = sum(1 for e in ready if e.api_key and e.api_key.lower() != "no-auth")
-        noauth = sum(1 for e in ready if e.api_key and e.api_key.lower() == "no-auth")
+        keyed = sum(1 for e in ready if e.credential_state == "keyed")
+        noauth = sum(1 for e in ready if e.credential_state == "no-auth")
         _print(f"providers: OK  ({len(registry.endpoints)} configured, {keyed} keyed, {noauth} no-auth)")
         _print(f"  config:  {registry.source_path}")
     except ProviderRegistryError as e:
@@ -1482,9 +1486,9 @@ def cmd_providers(args: argparse.Namespace) -> int:
     _print(f"Provider config: {registry.source_path}")
     _print(f"{'NAME':22} {'DISPLAY':28} {'BASE_URL':45} KEY    ALLOWED")
     for ep in registry.endpoints:
-        if ep.api_key.lower() == "no-auth":
+        if ep.credential_state == "no-auth":
             key_marker = "noauth"
-        elif ep.api_key:
+        elif ep.credential_state == "keyed":
             key_marker = "yes"
         else:
             key_marker = "MISSING"

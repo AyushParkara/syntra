@@ -369,6 +369,9 @@ class ProviderEndpoint:
     display_name: str    # human label
     base_url: str        # full base, e.g. https://api.example.com/v1
     api_key: str         # bearer token; "" means none required
+    # Safe display metadata. This deliberately contains no credential text, so
+    # status views can report auth readiness without reading or rendering api_key.
+    credential_state: str = "missing"  # "keyed" | "no-auth" | "missing"
     timeout: float = 60.0
     extra_headers: dict[str, str] | None = None
     # If set, restricts which models this endpoint is allowed to serve.
