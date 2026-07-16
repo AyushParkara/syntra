@@ -176,7 +176,7 @@ def write_providers_config(path: Path | str, providers: list[dict],
 
 
 def remove_key_by_tail(raw: dict, provider: str, tail: str) -> tuple[dict, list[str], list[str]]:
-    """Remove the API key(s) ending in `tail` from `provider` in a providers.json
+    """Remove the API key(s) selected by `tail` from `provider` in a providers.json
     dict. PURE (no I/O) so it's fully testable. Returns (new_raw, removed, notes):
       - removed: human descriptions of what was removed (never the full key)
       - notes:   advisories (provider not found, env-managed keys, etc.)
@@ -184,7 +184,7 @@ def remove_key_by_tail(raw: dict, provider: str, tail: str) -> tuple[dict, list[
     (`api_key_env`/`api_key_envs`) hold VARIABLE NAMES, not the key, so they can't
     be matched by tail -> noted, not touched. Deep-copies so the input is untouched."""
     import copy
-    tail = (tail or "").strip().lstrip("… ").strip()   # strip whitespace BEFORE the ellipsis (paste from the TUI alert may have leading space)
+    tail = (tail or "").strip().lstrip("… ").strip()
     new = copy.deepcopy(raw)
     removed: list[str] = []
     notes: list[str] = []
@@ -194,7 +194,7 @@ def remove_key_by_tail(raw: dict, provider: str, tail: str) -> tuple[dict, list[
         notes.append(f"provider {provider!r} not found in config")
         return new, removed, notes
     if not tail:
-        notes.append("no key tail given (expected the last-6 shown in the alert)")
+        notes.append("no credential suffix given")
         return new, removed, notes
 
     # api_keys: list -> drop matching elements
@@ -202,7 +202,7 @@ def remove_key_by_tail(raw: dict, provider: str, tail: str) -> tuple[dict, list[
         kept = [k for k in target["api_keys"] if not (isinstance(k, str) and k.endswith(tail))]
         dropped = len(target["api_keys"]) - len(kept)
         if dropped:
-            removed.append(f"{dropped} key(s) ending …{tail} from {provider}.api_keys")
+            removed.append(f"removed {dropped} credential(s) from {provider}.api_keys")
             if kept:
                 target["api_keys"] = kept
             else:
@@ -210,13 +210,13 @@ def remove_key_by_tail(raw: dict, provider: str, tail: str) -> tuple[dict, list[
     # api_key: single string
     if isinstance(target.get("api_key"), str) and target["api_key"].endswith(tail):
         target.pop("api_key")
-        removed.append(f"{provider}.api_key ending …{tail}")
+        removed.append(f"removed a credential from {provider}.api_key")
     # env-managed keys: can't match by tail (field holds the VAR NAME)
     if target.get("api_key_env") or target.get("api_key_envs"):
         notes.append(f"{provider} also has env-var key(s) (api_key_env*); those hold "
                      f"variable names, not the key — remove the env var yourself if needed")
     if not removed and not notes:
-        notes.append(f"no literal key ending …{tail} found on {provider}")
+        notes.append(f"no matching literal credential found for {provider}")
     return new, removed, notes
 
 
@@ -224,7 +224,7 @@ def add_key(raw: dict, provider: str, key: str, *, base_url: str = "",
             display_name: str = "") -> tuple[dict, str, list[str]]:
     """Add an API key to `provider` in a providers.json dict. PURE (no I/O) so it's fully
     testable and never echoes the secret. Returns (new_raw, summary, notes):
-      - summary: a human line describing what changed (key shown ONLY as its last-4 tail)
+      - summary: a human line describing what changed without credential text
       - notes:   advisories (created a new provider, key already present, missing base_url…)
 
     Keys accumulate in `api_keys` (the list the registry already rotates through for backups),
@@ -240,7 +240,6 @@ def add_key(raw: dict, provider: str, key: str, *, base_url: str = "",
         return new, "", ["no provider name given"]
     if not key:
         return new, "", ["no key given"]
-    tail = key[-4:]
     new.setdefault("providers", [])
     target = next((p for p in new["providers"] if p.get("name") == provider), None)
     created = False
@@ -262,14 +261,14 @@ def add_key(raw: dict, provider: str, key: str, *, base_url: str = "",
     if isinstance(target.get("api_keys"), list):
         existing.extend(k for k in target["api_keys"] if isinstance(k, str))
     if key in existing:
-        return new, "", [f"that key (…{tail}) is already configured for {provider}"]
+        return new, "", [f"that credential is already configured for {provider}"]
 
     # Normalize onto api_keys (the list form the rotator uses). Fold a pre-existing single
     # api_key into the list so both old + new are tried.
     merged = existing + [key]
     target.pop("api_key", None)
     target["api_keys"] = merged
-    summary = (f"added key …{tail} to {provider}"
+    summary = (f"added credential to {provider}"
                + (" (new provider)" if created else f" ({len(merged)} key(s) total)"))
     return new, summary, notes
 

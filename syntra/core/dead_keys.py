@@ -49,7 +49,7 @@ _PARK_SECONDS: dict[str, float] = {
 
 
 def key_tail(api_key: str | None) -> str:
-    """Last 6 chars of a key — the stable, non-secret identity we store/compare on."""
+    """Private internal credential identifier used only for de-duplication."""
     if not api_key:
         return ""
     return api_key[-6:]

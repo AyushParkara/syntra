@@ -189,16 +189,13 @@ class KeyEntryForm:
 # ---- render ----------------------------------------------------------------
 
 def _masked(key: str, reveal: bool) -> str:
-    """The key as shown: full when reveal, else bullets (last 4 visible once it's long enough so
-    the user can sanity-check the paste without exposing the whole secret)."""
+    """The key as shown: full only on explicit reveal, otherwise bullets."""
     if reveal:
         return key
     n = len(key)
     if n == 0:
         return ""
-    if n <= 8:
-        return "•" * n
-    return "•" * (n - 4) + key[-4:]
+    return "•" * n
 
 
 def key_box(form: KeyEntryForm, width: int) -> list:
@@ -228,7 +225,7 @@ def key_box(form: KeyEntryForm, width: int) -> list:
             opt = ""
         # Show the caret AT the cursor position in the focused field (so mid-field editing is
         # visible), not just parked at the end. Masking is applied first, then the caret is
-        # inserted at the same index (masked + real strings are the same length up to the last-4).
+        # inserted at the same index (masked and real strings have the same length).
         if focused:
             cpos = max(0, min(form.cursor, len(shown)))
             shown = shown[:cpos] + "▏" + shown[cpos:]
