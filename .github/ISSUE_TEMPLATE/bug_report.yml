@@ -1,0 +1,48 @@
+name: Bug report
+description: Report something broken, confusing, or surprising in Syntra.
+title: "Bug: "
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the bug clearly.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Run ...
+        2. Type ...
+        3. See ...
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS / terminal
+      placeholder: "Ubuntu 24.04 / macOS / Windows Terminal / GNOME Terminal"
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: "python3 --version"
+  - type: input
+    id: install
+    attributes:
+      label: Install method
+      placeholder: "pip install -e ., uv tool install, pipx, source checkout"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Redact API keys, provider configs, private project paths, and `.syntra/` state.

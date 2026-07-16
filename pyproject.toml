@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "syntra"
+version = "0.1.0"
+description = "Open-source control plane for multi-model coding: role-based routing, durable task state, and inspectable run receipts."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+dependencies = []
+keywords = ["llm", "ai", "agent", "coding-assistant", "multi-model", "router", "tui", "cli"]
+authors = [{name = "Ayush Parkara"}]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Utilities",
+]
+
+[project.urls]
+Homepage = "https://github.com/AyushParkara/syntra"
+Repository = "https://github.com/AyushParkara/syntra"
+Issues = "https://github.com/AyushParkara/syntra/issues"
+Changelog = "https://github.com/AyushParkara/syntra/blob/main/CHANGELOG.md"
+
+[project.scripts]
+syntra = "syntra.cli.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["syntra*"]
+exclude = ["tests*", "legacy*"]
+
+[tool.setuptools.package-data]
+# Ship the data + role prompts + built-in skills so a clean install works.
+syntra = [
+    "data/*.json",
+    "core/prompts/*.md",
+    "skills/**/*",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+extend-exclude = ["tests", "docs", "legacy"]
+
+[tool.ruff.lint]
+# House style: compact one-liners (E701/E702), grouped imports (E401), and
+# lambda-assignment (E731) are intentional in rendering code — never flag them.
+# We enforce only the correctness-relevant subset so the gate stays signal-dense.
+select = [
+    "F401", "F402", "F403", "F404", "F501", "F502", "F521", "F522", "F541",
+    "F811", "F821", "F823", "F841",
+    "B006", "B008", "B904",
+    "PLE", "PLW0602",
+    "RUF012", "RUF034",
+    "SIM115",
+    "PERF401", "PERF403", "C408", "C416",
+]
+ignore = ["E701", "E702", "E401", "E731"]

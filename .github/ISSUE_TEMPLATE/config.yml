@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability report
+    url: https://github.com/AyushParkara/syntra/security/advisories/new
+    about: Do not report security vulnerabilities publicly. Use private vulnerability reporting after it is enabled, or follow SECURITY.md.
+  - name: Support and usage policy
+    url: https://github.com/AyushParkara/syntra/blob/main/SUPPORT.md
+    about: Read where to ask questions, report bugs, propose ideas, and report security issues.

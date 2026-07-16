@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Provider config with real keys
+**/providers.json
+
+# Environment files can contain credentials; keep an optional safe template trackable.
+.env
+.env.*
+!.env.example
+
+# Task state and event logs
+.syntra/
+**/.syntra/
+
+# Reference clones
+reference/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local scratch
+/*.png
+*.bak*
+*.local.md
+/ISSUES.md
+/tests/
+/private-docs/
+/notes/
+/backups/
+/data/
+/.superpowers/
+/internal_testing/
+/.internal_testing/
+/pw.log
+/.browser_test/
+/.img_test/

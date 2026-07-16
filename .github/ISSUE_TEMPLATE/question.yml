@@ -1,0 +1,33 @@
+name: Question or support request
+description: Ask for help using, installing, or configuring Syntra.
+title: "Question: "
+labels: [question]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For security vulnerabilities, do not use this form. Follow SECURITY.md.
+        Do not include API keys, provider configs, private repository paths, or
+        `.syntra/` task state.
+  - type: textarea
+    id: question
+    attributes:
+      label: What are you trying to do?
+      description: Include the command or workflow you expected to work.
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What have you tried?
+      description: Include sanitized output or error messages where helpful.
+  - type: input
+    id: version
+    attributes:
+      label: Syntra version or commit
+      placeholder: "syntra --version"
+  - type: input
+    id: environment
+    attributes:
+      label: OS, terminal, and Python version
+      placeholder: "Ubuntu 24.04 / GNOME Terminal / Python 3.12"

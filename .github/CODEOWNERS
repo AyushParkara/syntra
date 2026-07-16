@@ -1,0 +1,5 @@
+# Code owners for Syntra.
+# Every change to main requires review/approval from the owner(s) listed here.
+# This makes AyushParkara's approval mandatory on all pull requests into main
+# (a collaborator approving another collaborator's PR does NOT satisfy this).
+* @AyushParkara

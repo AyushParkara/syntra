@@ -1,0 +1,65 @@
+{
+  "_comment": "Template provider config. Copy to ~/.config/syntra/providers.json and fill in your keys. Never commit a copy with real keys.",
+  "providers": [
+    {
+      "name": "openrouter",
+      "display_name": "OpenRouter",
+      "base_url": "https://openrouter.ai/api/v1",
+      "_multi_key_note": "MULTIPLE KEYS: use api_keys (list of literals) or api_key_envs (list of env vars) for several keys on ONE provider. Tried in precedence order; Syntra auto-fails-over to the next key on quota/billing exhaustion and alerts you when all are spent. Single key still works via api_key / api_key_env.",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "_api_keys_example": ["YOUR_PRIMARY_KEY", "YOUR_BACKUP_KEY"],
+      "extra_headers": {
+        "HTTP-Referer": "https://syntra.local",
+        "X-Title": "Syntra"
+      }
+    },
+    {
+      "name": "deepseek",
+      "display_name": "DeepSeek (native)",
+      "base_url": "https://api.deepseek.com",
+      "api_key_env": "DEEPSEEK_API_KEY",
+      "allowed_models": ["deepseek-chat", "deepseek-reasoner"]
+    },
+    {
+      "name": "moonshot",
+      "display_name": "Moonshot Kimi",
+      "base_url": "https://api.moonshot.cn/v1",
+      "api_key_env": "MOONSHOT_API_KEY",
+      "allowed_models": ["kimi-k2-0905-preview", "kimi-k2-thinking", "moonshot-v1-32k"]
+    },
+    {
+      "name": "alibaba",
+      "display_name": "Alibaba DashScope",
+      "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "api_key_env": "DASHSCOPE_API_KEY",
+      "allowed_models": ["qwen3-coder-plus", "qwen-max", "qwen-plus"]
+    },
+    {
+      "name": "minimax",
+      "display_name": "MiniMax",
+      "base_url": "https://api.minimax.io/v1",
+      "api_key_env": "MINIMAX_API_KEY",
+      "allowed_models": ["minimax-m2", "minimax-text-01"]
+    },
+    {
+      "name": "xai",
+      "display_name": "xAI Grok",
+      "base_url": "https://api.x.ai/v1",
+      "api_key_env": "XAI_API_KEY",
+      "allowed_models": ["grok-4", "grok-4-fast", "grok-code-fast-1"]
+    },
+    {
+      "name": "nvidia",
+      "display_name": "NVIDIA Build",
+      "base_url": "https://integrate.api.nvidia.com/v1",
+      "api_key_env": "NVIDIA_API_KEY"
+    },
+    {
+      "name": "ollama-local",
+      "display_name": "Local Ollama",
+      "base_url": "http://localhost:11434/v1",
+      "api_key": "no-auth",
+      "_comment": "Self-hosted, no auth needed. Add the models you have pulled locally."
+    }
+  ]
+}

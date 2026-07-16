@@ -1,0 +1,35 @@
+name: Documentation feedback
+description: Report documentation that is unclear, incomplete, stale, or incorrect.
+title: "Docs: "
+labels: [documentation]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for improving Syntra's documentation. Do not include API keys,
+        provider configuration, private project paths, or `.syntra/` state.
+  - type: input
+    id: page
+    attributes:
+      label: Page or section
+      description: Link to the page, or name the heading/command that needs attention.
+      placeholder: "README.md — Install"
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What was unclear, incorrect, or missing?
+      description: Explain what made the documentation hard to use.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What information did you expect?
+      description: Include a suggested explanation or example if you have one.
+  - type: input
+    id: version
+    attributes:
+      label: Syntra version or commit
+      placeholder: "syntra --version"

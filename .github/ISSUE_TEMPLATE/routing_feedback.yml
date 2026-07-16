@@ -1,0 +1,55 @@
+name: Routing or provider feedback
+description: Report a surprising model route, cost, failover, or provider outcome.
+title: "Routing: "
+labels: [routing]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Routing feedback is especially valuable during the public beta. Please
+        sanitize all output: never include API keys, provider config files, private
+        repository content, or `.syntra/` task state.
+  - type: dropdown
+    id: feedback_type
+    attributes:
+      label: Feedback type
+      options:
+        - Wrong model selected
+        - Unexpected provider selected
+        - Cost was unexpectedly high
+        - Failover did not behave as expected
+        - Route health / cooldown behavior
+        - Catalog data or role tags appear wrong
+        - Other routing behavior
+    validations:
+      required: true
+  - type: textarea
+    id: task_shape
+    attributes:
+      label: Task shape
+      description: Describe the task category and constraints without private code or data.
+      placeholder: "Python bug fix with tests; needed tool use and a small edit."
+    validations:
+      required: true
+  - type: textarea
+    id: actual_route
+    attributes:
+      label: Actual route or sanitized output
+      description: Paste sanitized `syntra route`, `syntra verify`, or verbose dry-run output if available.
+    validations:
+      required: true
+  - type: textarea
+    id: expected_route
+    attributes:
+      label: What did you expect, and why?
+      description: Explain the route, cost, provider, or failover behavior that would have made more sense.
+  - type: input
+    id: version
+    attributes:
+      label: Syntra version or commit
+      placeholder: "syntra --version"
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, and provider names only. Do not paste keys or URLs containing tokens.
