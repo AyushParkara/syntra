@@ -4364,14 +4364,14 @@ def run_tui2(run_goal, *, startup_note_fn=None) -> int:
                 import time as _t
                 from ..core.tui_model import usage_stats, render_stats_dashboard
                 from ..core.spend import Ledger, _LEDGER_REL
-                from .main import _state_root
+                from .main import _state_root as _sr_stats
                 try:
                     _days = int(arg.strip()) if arg.strip() else 30
                 except ValueError:
                     _days = 30
                 _days = max(7, min(365, _days))
                 try:
-                    _led = Ledger(_state_root().joinpath(*_LEDGER_REL))
+                    _led = Ledger(_sr_stats().joinpath(*_LEDGER_REL))
                     _entries = _led._read()
                 except Exception:  # noqa: BLE001 - a missing/corrupt ledger → empty state
                     _entries = []
@@ -7195,7 +7195,6 @@ def run_tui2(run_goal, *, startup_note_fn=None) -> int:
         _captured = _err_buf.getvalue()
         if _captured.strip():
             try:
-                from pathlib import Path as _P
                 _logp = _state_root() / "tui_stderr.log"
                 _logp.parent.mkdir(parents=True, exist_ok=True)
                 with open(_logp, "a", encoding="utf-8") as _lf:
