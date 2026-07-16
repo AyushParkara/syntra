@@ -19,12 +19,12 @@ unsafe, expensive, or unexpectedly useful. The most helpful feedback includes:
 
 ## Where to post
 
-- **Questions & help** — setup, commands, providers, and normal usage questions.
+- **Q&A** — setup, commands, providers, and normal usage questions.
 - **Ideas** — discuss a problem before proposing a large feature.
-- **Routing & provider feedback** — routes, costs, model availability, catalog data,
-  and failover behavior.
+- **General** — contributor coordination and broader beta discussion.
+- **Routing or provider feedback** issue form — routes, costs, model availability,
+  catalog data, and failover behavior.
 - **Show and tell** — share a sanitized workflow, integration, or project result.
-- **Contributor coordination** — coordinate on an accepted issue or proposal.
 
 Use GitHub Issues for reproducible bugs and defined feature work. Do not use a
 public Discussion or Issue for a vulnerability: follow `SECURITY.md` and use
