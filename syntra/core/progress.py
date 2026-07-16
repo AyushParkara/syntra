@@ -67,10 +67,6 @@ def tui_progress_line(kind: str, payload: dict, *, verbose: bool = False) -> str
         return "[resumed] user input received"
 
     # ---- failover visibility (req: SHOW the switch, never blind-wait) ----
-    # A route is named "provider (…last6)" so the user can tell WHICH key is used.
-    def _route_label(prov, tail):
-        return f"{prov} (…{tail})" if tail else (prov or "?")
-
     if kind == "provider_failover":
         model = (p.get("model", "?")).split("/")[-1]
         frm, to = p.get("from", "?"), p.get("to", "?")
@@ -90,10 +86,10 @@ def tui_progress_line(kind: str, payload: dict, *, verbose: bool = False) -> str
         model = (p.get("model", "?")).split("/")[-1]
         nxt = p.get("next")
         tail = f" → next {nxt}" if nxt else " → no backup left"
-        return f"⚠ {model} key {p.get('key','?')} on {p.get('provider','?')} exhausted{tail}"
+        return f"⚠ {model} credential on {p.get('provider','?')} exhausted{tail}"
     if kind == "preflight_probe":
         model = (p.get("model", "?")).split("/")[-1]
-        label = _route_label(p.get("provider"), p.get("key_tail"))
+        label = p.get("provider") or "?"
         status = p.get("status")
         if status == "ok":
             return f"✓ {model} via {label} ok ({p.get('latency_ms', 0)}ms)"
@@ -105,7 +101,7 @@ def tui_progress_line(kind: str, payload: dict, *, verbose: bool = False) -> str
     if kind == "preflight_summary":
         if p.get("healthy"):
             model = (p.get("working_model", "?")).split("/")[-1]
-            label = _route_label(p.get("working_provider"), p.get("working_key_tail"))
+            label = p.get("working_provider") or "?"
             return f"● {p.get('role','?')}: using {model} via {label}"
         return f"✗ {p.get('role','?')}: NO working model among top picks"
     if kind == "silent_failure":
@@ -116,13 +112,13 @@ def tui_progress_line(kind: str, payload: dict, *, verbose: bool = False) -> str
                   "tool_bypass": "claimed tool success but did nothing"}
         return f"⚠ {model} via {p.get('provider','?')}: {labels.get(kd, kd)} — cooling route"
     if kind == "credential_help":
-        prov, key, tail = p.get("provider", "?"), p.get("key", "?"), p.get("key_tail", "")
-        cmd = f"syntra providers remove-key {prov} {tail}".rstrip()
+        prov = p.get("provider", "?")
+        cmd = f"syntra providers remove-key {prov} <key-suffix>"
         if p.get("kind") == "billing":
-            return (f"💳 {prov} key {key} is OUT OF CREDITS — add credits to this key, "
-                    f"or remove it from config:  {cmd}")
-        return (f"🔑 {prov} key {key} was REJECTED (bad/expired key) — fix it, "
-                f"or remove it from config:  {cmd}")
+            return (f"💳 A credential for {prov} is OUT OF CREDITS — add credits, "
+                    f"or remove it from private config:  {cmd}")
+        return (f"🔑 A credential for {prov} was REJECTED (bad/expired key) — fix it, "
+                f"or remove it from private config:  {cmd}")
 
     # ---- verbose-only telemetry (mirror _run_progress) ----
     if not verbose:

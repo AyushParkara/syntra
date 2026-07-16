@@ -4556,7 +4556,6 @@ class Loop:
         if first_time:
             self._emit("key_exhausted", {
                 "provider": provider_name,
-                "key": ("…" + api_key[-6:]) if api_key else "(no key)",
                 "model": model_id,
                 "backups_remaining": len(remaining),
                 "next": remaining[0].name if remaining else None,
@@ -4565,7 +4564,8 @@ class Loop:
     def _suggest_credential_fix(self, provider_name: str, api_key: str, kind: str) -> None:
         """Surface an ACTIONABLE suggestion when a route fails for a credential
         reason the user must fix: billing (out of credits) or auth (bad/expired
-        key). Tells them to add credits OR remove the key, with the exact command.
+        key). Tells them to add credits OR remove the key without displaying any
+        credential-derived identifier.
         Emitted at most once per (provider, key, kind) per session (no spam)."""
         if kind not in ("billing", "auth"):
             return
@@ -4579,8 +4579,6 @@ class Loop:
         seen.add(sig)
         self._emit("credential_help", {
             "provider": provider_name,
-            "key": ("…" + tail) if tail else "(no key)",
-            "key_tail": tail,
             "kind": kind,
         })
 

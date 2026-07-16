@@ -992,12 +992,12 @@ def _run_progress(kind: str, payload: dict) -> None:
         _print(f"  [reroute] {model} response looked off ({payload.get('reason','low quality')}) "
                f"-> re-asking a different model")
     elif kind == "credential_help":
-        prov, key, tail = payload.get("provider", "?"), payload.get("key", "?"), payload.get("key_tail", "")
+        prov = payload.get("provider", "?")
         if payload.get("kind") == "billing":
-            _print(f"  [credits] {prov} key {key} is OUT OF CREDITS — add credits, or remove it:")
+            _print(f"  [credits] a credential for {prov} is OUT OF CREDITS — add credits, or remove it:")
         else:
-            _print(f"  [bad key] {prov} key {key} was REJECTED — fix it, or remove it:")
-        _print(f"            syntra providers remove-key {prov} {tail}")
+            _print(f"  [bad key] a credential for {prov} was REJECTED — fix it, or remove it:")
+        _print(f"            syntra providers remove-key {prov} <key-suffix>")
     elif kind == "usage":
         cache = f"  cache✓{payload['cache_read']}" if payload.get("cache_read") else ""
         _print(f"  [usage] {payload['role']:<8}  {payload['model']}  in={payload['in']} out={payload['out']}{cache}  ${payload['usd']:.4f}")
@@ -5171,11 +5171,10 @@ def _make_tui_runner(resume_id: str = ""):
             if kind == "key_exhausted":
                 n = payload.get("backups_remaining", 0)
                 prov = payload.get("provider", "?")
-                key = payload.get("key", "")
                 if n > 0:
-                    on_event(f"⚠ {prov} key {key} limited — {n} backup key(s) left, switching", "tool")
+                    on_event(f"⚠ {prov} credential limited — {n} backup credential(s) left, switching", "tool")
                 else:
-                    on_event(f"✗ {prov} key {key} limited and NO backups left — "
+                    on_event(f"✗ {prov} credential limited and NO backups left — "
                              f"change model, add credits, or increase the daily limit", "tool")
                 return
             # phase / plan_step / plan_ready / step_start / step_done are now owned
