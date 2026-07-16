@@ -1558,9 +1558,9 @@ def cmd_local(args: argparse.Namespace) -> int:
 
 
 def cmd_providers_remove_key(args: argparse.Namespace) -> int:
-    """Remove an API key (matched by its last-6 chars) from a provider in
+    """Remove an API key selected by a private suffix from a provider in
     providers.json. DRY-RUN by default; needs --yes to write. Backs up first and
-    never prints the full key. This is the action the 'out of credits / bad key'
+    never prints credential text. This is the action the 'out of credits / bad key'
     alert suggests."""
     import json as _json, os as _os, shutil as _shutil, time as _time
     from ..core.registry import remove_key_by_tail
@@ -1581,7 +1581,7 @@ def cmd_providers_remove_key(args: argparse.Namespace) -> int:
         _print(f"  - {r}")
     if not args.yes:
         _print(f"\nDRY RUN (nothing changed). Apply with:\n"
-               f"  syntra providers remove-key {args.provider} {args.tail} --yes")
+               f"  syntra providers remove-key {args.provider} <key-suffix> --yes")
         return 0
     # Apply: back up, then atomic chmod-600 write of the FULL dict (preserve structure).
     bak = f"{path}.bak-{int(_time.time())}"
@@ -3894,12 +3894,12 @@ def _handle_session_action(action: str, arg: str, last_task_id: str) -> bool:
         return True
     if action == "key":
         # /key <provider> <key> [base_url] — add an API key without editing config files. Saved
-        # chmod-600; never echoed (only the last-4 tail). Same persistence the TUI seam uses.
+        # chmod-600; never echoed. Same persistence the TUI seam uses.
         parts = (arg or "").split()
         if len(parts) < 2:
             _print("usage: /key <provider> <key> [base_url]")
             _print("  e.g.  /key openrouter sk-or-... https://openrouter.ai/api/v1")
-            _print("  the key is saved (chmod 600) and never shown — only its last 4 chars.")
+            _print("  the key is saved with mode 600 and is never shown in output.")
             return True
         # NOTE: do NOT re-import ProviderRegistry here — it is already module-level (line 35).
         # A local re-import binds the name function-locally, which made the earlier /providers
@@ -4468,9 +4468,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_prov.set_defaults(func=cmd_providers)
     prov_sub = p_prov.add_subparsers(dest="prov_action")
     rmk = prov_sub.add_parser("remove-key",
-        help="remove an API key (by its last-6 chars) from a provider — dry-run unless --yes")
+        help="remove an API key using a private suffix — dry-run unless --yes")
     rmk.add_argument("provider", help="provider name (e.g. openrouter, deepseek)")
-    rmk.add_argument("tail", help="last 6 chars of the key to remove (shown in the alert)")
+    rmk.add_argument("tail", help="private key suffix used to select the credential")
     rmk.add_argument("--yes", action="store_true", help="actually write the change (backs up first)")
     rmk.set_defaults(func=cmd_providers_remove_key)
 

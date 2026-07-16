@@ -3321,7 +3321,7 @@ def run_tui2(run_goal, *, startup_note_fn=None) -> int:
             # /key — add an API key for a provider FROM the TUI. BARE /key opens an interactive
             # masked POPUP FORM (so the secret is never typed on the command line or into chat
             # history). /key <provider> <key> [base_url] is the quick direct path. Either way the
-            # key is persisted chmod-600 and NEVER echoed (only its last-4 tail).
+            # key is persisted chmod-600 and NEVER echoed.
             if action == "key":
                 parts = (arg or "").split()
                 # /key detect <provider> — probe a configured provider's /models with its key,

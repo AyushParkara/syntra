@@ -72,13 +72,14 @@ def make_file_overlay(root: str = ".") -> Overlay:
     return Overlay(kind="file", title="files", select=SelectList(files, height=12))
 
 
-def _mask_key(key: str) -> str:
-    """Show only the last 6 chars of an API key. '' -> '(no key)'."""
-    if not key:
-        return "(no key)"
-    if key == "no-auth":
+def _credential_label(endpoint) -> str:
+    """Return safe credential state for UI display without reading key text."""
+    state = getattr(endpoint, "credential_state", "")
+    if state == "keyed":
+        return "configured"
+    if state == "no-auth":
         return "no-auth"
-    return "…" + key[-6:] if len(key) > 6 else "…" + key
+    return "missing"
 
 
 # The picker's first row returns to automatic routing (unpin) instead of pinning a model.
@@ -87,7 +88,7 @@ AUTO_ROW = "⟳ Auto  ·  let Syntra pick the best model per task"
 
 
 def make_model_overlay(role: str = "") -> Overlay:
-    """Searchable model picker: each row is 'model_id  ·  provider  ·  …key'.
+    """Searchable model picker: each row is 'model_id  ·  provider  ·  credential state'.
 
     The FIRST row is always "⟳ Auto" — selecting it UNPINS the role (returns to automatic
     best-fit routing), so a manual choice is never a dead end (user: once a model is chosen
@@ -103,15 +104,15 @@ def make_model_overlay(role: str = "") -> Overlay:
         cat_path = os.environ.get("SYNTRA_CATALOG_PATH")
         cat = Catalog.load(cat_path) if cat_path else _bundled_catalog()
         reg = ProviderRegistry.load()
-        # For each model that resolves to a provider, collect (id, provider, key)…
+        # For each model that resolves to a provider, collect safe display metadata.
         _raw: list[tuple[str, str, str]] = []
         for m in sorted(cat.models, key=lambda x: -x.intelligence_index):
             ep = reg.find_for_model(m.id)
             if ep is None:
                 continue
-            _raw.append((m.id, ep.name, _mask_key(ep.api_key)))
+            _raw.append((m.id, ep.name, _credential_label(ep)))
         # …then align into fixed-width COLUMNS so it reads as a proper table (the ids
-        # vary in width, so a plain "id · prov · key" looked ragged).
+        # vary in width, so a plain "id · provider · state" looked ragged).
         _mw = min(38, max((len(r[0]) for r in _raw), default=10))
         _pw = min(16, max((len(r[1]) for r in _raw), default=6))
         for mid, prov, key in _raw:
