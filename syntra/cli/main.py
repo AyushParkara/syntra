@@ -38,6 +38,7 @@ from ..core.aa_refresh import refresh_catalog, AARefreshError
 from ..core.route_health import RouteHealth
 from ..core.overrides import Overrides
 from ..core import pricing
+from ..core.redact import redact as _redact_output
 from ..providers.openai_compat import ProviderError
 
 
@@ -153,10 +154,13 @@ def _reliability_label(stats, role: str, provider: str, model_id: str) -> str:
 
 
 def _print(s: str = "") -> None:
+    # Never send credential-shaped values to terminal output or the TUI transcript.
+    # Known provider keys are also redacted at provider/network error boundaries.
+    safe = _redact_output(str(s))
     if _OUTPUT_SINK is not None:
-        _OUTPUT_SINK(str(s))
+        _OUTPUT_SINK(safe)
         return
-    sys.stdout.write(s + "\n")
+    sys.stdout.write(safe + "\n")
     sys.stdout.flush()
 
 
@@ -352,9 +356,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     try:
         registry = ProviderRegistry.load()
         ready = registry.ready_endpoints()
-        keyed = sum(1 for e in ready if e.api_key and e.api_key.lower() != "no-auth")
-        noauth = sum(1 for e in ready if e.api_key and e.api_key.lower() == "no-auth")
-        no_key = sum(1 for e in registry.endpoints if not e.api_key)
+        keyed = sum(1 for e in ready if e.credential_state == "keyed")
+        noauth = sum(1 for e in ready if e.credential_state == "no-auth")
+        no_key = sum(1 for e in registry.endpoints if e.credential_state == "missing")
         _ok("providers", f"{len(registry.endpoints)} configured, {keyed} keyed, {noauth} no-auth")
         if no_key > 0:
             _warn("providers", f"{no_key} endpoint(s) have empty api_key (not 'no-auth', not set)")
@@ -523,8 +527,8 @@ def cmd_verify(args: argparse.Namespace) -> int:
     try:
         registry = ProviderRegistry.load()
         ready = registry.ready_endpoints()
-        keyed = sum(1 for e in ready if e.api_key and e.api_key.lower() != "no-auth")
-        noauth = sum(1 for e in ready if e.api_key and e.api_key.lower() == "no-auth")
+        keyed = sum(1 for e in ready if e.credential_state == "keyed")
+        noauth = sum(1 for e in ready if e.credential_state == "no-auth")
         _print(f"providers: OK  ({len(registry.endpoints)} configured, {keyed} keyed, {noauth} no-auth)")
         _print(f"  config:  {registry.source_path}")
     except ProviderRegistryError as e:
@@ -988,12 +992,12 @@ def _run_progress(kind: str, payload: dict) -> None:
         _print(f"  [reroute] {model} response looked off ({payload.get('reason','low quality')}) "
                f"-> re-asking a different model")
     elif kind == "credential_help":
-        prov, key, tail = payload.get("provider", "?"), payload.get("key", "?"), payload.get("key_tail", "")
+        prov = payload.get("provider", "?")
         if payload.get("kind") == "billing":
-            _print(f"  [credits] {prov} key {key} is OUT OF CREDITS — add credits, or remove it:")
+            _print(f"  [credits] a credential for {prov} is OUT OF CREDITS — add credits, or remove it:")
         else:
-            _print(f"  [bad key] {prov} key {key} was REJECTED — fix it, or remove it:")
-        _print(f"            syntra providers remove-key {prov} {tail}")
+            _print(f"  [bad key] a credential for {prov} was REJECTED — fix it, or remove it:")
+        _print(f"            syntra providers remove-key {prov} <key-suffix>")
     elif kind == "usage":
         cache = f"  cache✓{payload['cache_read']}" if payload.get("cache_read") else ""
         _print(f"  [usage] {payload['role']:<8}  {payload['model']}  in={payload['in']} out={payload['out']}{cache}  ${payload['usd']:.4f}")
@@ -1482,9 +1486,9 @@ def cmd_providers(args: argparse.Namespace) -> int:
     _print(f"Provider config: {registry.source_path}")
     _print(f"{'NAME':22} {'DISPLAY':28} {'BASE_URL':45} KEY    ALLOWED")
     for ep in registry.endpoints:
-        if ep.api_key.lower() == "no-auth":
+        if ep.credential_state == "no-auth":
             key_marker = "noauth"
-        elif ep.api_key:
+        elif ep.credential_state == "keyed":
             key_marker = "yes"
         else:
             key_marker = "MISSING"
@@ -5167,11 +5171,10 @@ def _make_tui_runner(resume_id: str = ""):
             if kind == "key_exhausted":
                 n = payload.get("backups_remaining", 0)
                 prov = payload.get("provider", "?")
-                key = payload.get("key", "")
                 if n > 0:
-                    on_event(f"⚠ {prov} key {key} limited — {n} backup key(s) left, switching", "tool")
+                    on_event(f"⚠ {prov} credential limited — {n} backup credential(s) left, switching", "tool")
                 else:
-                    on_event(f"✗ {prov} key {key} limited and NO backups left — "
+                    on_event(f"✗ {prov} credential limited and NO backups left — "
                              f"change model, add credits, or increase the daily limit", "tool")
                 return
             # phase / plan_step / plan_ready / step_start / step_done are now owned

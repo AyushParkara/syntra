@@ -3417,14 +3417,15 @@ def run_tui2(run_goal, *, startup_note_fn=None) -> int:
             if action == "providers":
                 try:
                     from ..core.registry import ProviderRegistry
-                    from ..core.overlay import _mask_key
                     reg = ProviderRegistry.load()
                     lines = []
                     for ep in reg.endpoints:
-                        key_ok = "✓" if ep.api_key else "✗"
+                        key_ok = "✓" if ep.credential_state != "missing" else "✗"
+                        key_label = {"keyed": "configured", "no-auth": "no-auth",
+                                     "missing": "missing"}.get(ep.credential_state, "missing")
                         n_models = len(ep.allowed_models) if ep.allowed_models else 0
                         models_str = f"{n_models} models" if n_models else "wildcard"
-                        lines.append(f"{key_ok} {ep.name:16s}  {_mask_key(ep.api_key):10s}  {models_str:12s}  {ep.base_url[:34]}")
+                        lines.append(f"{key_ok} {ep.name:16s}  {key_label:10s}  {models_str:12s}  {ep.base_url[:34]}")
                     _info_popup("providers", "\n".join(lines) or "no providers configured")
                 except Exception as e:
                     _info_popup("providers", f"error: {e}")

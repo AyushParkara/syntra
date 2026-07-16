@@ -48,11 +48,10 @@ _TERMINAL_FINISH = frozenset({"stop", "end_turn", "eos", ""})
 
 @dataclass(frozen=True)
 class ProbeResult:
-    """Outcome of one (model, provider, key) health probe."""
+    """Outcome of one (model, provider) health probe."""
     role: str
     model_id: str
     provider: str
-    key_tail: str                # last 6 chars of the api key (so the user can tell WHICH key)
     status: str                  # "ok" | "empty" | "error" | "inconclusive"
     kind: str | None = None      # FailureKind when status == "error"/"empty"
     detail: str = ""
@@ -60,8 +59,8 @@ class ProbeResult:
 
     @property
     def label(self) -> str:
-        """`provider (…abc123)` -- how a route is named in the UI (req #5)."""
-        return f"{self.provider} (…{self.key_tail})" if self.key_tail else self.provider
+        """Safe provider-only label for user-visible progress."""
+        return self.provider
 
 
 @dataclass(frozen=True)
@@ -75,10 +74,6 @@ class RolePreflight:
     @property
     def healthy(self) -> bool:
         return self.working is not None
-
-
-def _key_tail(api_key: str | None) -> str:
-    return (api_key[-6:] if api_key else "")
 
 
 def _default_chat(adapter, model_id: str, *, max_tokens: int):
@@ -155,19 +150,19 @@ def preflight_roles(
             endpoints = registry.find_all_for_model(model_id)
             if not endpoints:
                 # Should not happen (router resolves providers), but be safe.
-                pr = ProbeResult(role, model_id, dec.provider, "", "error",
+                pr = ProbeResult(role, model_id, dec.provider, "error",
                                  kind="network", detail="no provider endpoint")
                 attempts.append(pr)
                 _emit("preflight_probe", _probe_payload(pr))
                 continue
 
-            # Probe one key per DISTINCT (provider, key-tail) -- don't burn all 10
-            # openrouter keys; key-level failover is the runtime loop's job.
+            # Probe one configured endpoint at a time. Key-level failover is the
+            # runtime loop's job; credential identifiers never enter progress data.
             seen: set[tuple[str, str]] = set()
             model_ok = False
             for ep in endpoints:
-                tail = _key_tail(getattr(ep, "api_key", ""))
-                ident = (ep.name, tail)
+                api_key = getattr(ep, "api_key", "")
+                ident = (ep.name, api_key[-6:] if api_key else "")
                 if ident in seen:
                     continue
                 seen.add(ident)
@@ -181,7 +176,7 @@ def preflight_roles(
                     dt = int((time.time() - t0) * 1000)
                     if route_health is not None:
                         route_health.record_failure(ep.name, model_id, kind, detail=str(e))
-                    pr = ProbeResult(role, model_id, ep.name, tail, "error",
+                    pr = ProbeResult(role, model_id, ep.name, "error",
                                      kind=kind, detail=str(e)[:160], latency_ms=dt)
                     attempts.append(pr)
                     _emit("preflight_probe", _probe_payload(pr))
@@ -190,7 +185,7 @@ def preflight_roles(
                     dt = int((time.time() - t0) * 1000)
                     if route_health is not None:
                         route_health.record_failure(ep.name, model_id, "network", detail=str(e))
-                    pr = ProbeResult(role, model_id, ep.name, tail, "error",
+                    pr = ProbeResult(role, model_id, ep.name, "error",
                                      kind="network", detail=f"{type(e).__name__}: {e}"[:160],
                                      latency_ms=dt)
                     attempts.append(pr)
@@ -199,7 +194,7 @@ def preflight_roles(
 
                 dt = int((time.time() - t0) * 1000)
                 status, kind, detail = _classify_result(result)
-                pr = ProbeResult(role, model_id, ep.name, tail, status,
+                pr = ProbeResult(role, model_id, ep.name, status,
                                  kind=kind, detail=detail, latency_ms=dt)
                 attempts.append(pr)
                 _emit("preflight_probe", _probe_payload(pr))
@@ -230,7 +225,6 @@ def preflight_roles(
             "picked": picked,
             "working_model": working.model_id if working else None,
             "working_provider": working.provider if working else None,
-            "working_key_tail": working.key_tail if working else None,
             "healthy": report.healthy,
         })
 
@@ -242,7 +236,6 @@ def _probe_payload(pr: ProbeResult) -> dict:
         "role": pr.role,
         "model": pr.model_id,
         "provider": pr.provider,
-        "key_tail": pr.key_tail,
         "status": pr.status,
         "kind": pr.kind,
         "detail": pr.detail,
