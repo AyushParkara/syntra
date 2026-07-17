@@ -3259,8 +3259,11 @@ def _handle_session_action(action: str, arg: str, last_task_id: str) -> bool:
     if action == "providers":
         reg = ProviderRegistry.load()
         for ep in reg.endpoints:
-            key_ok = "✓" if ep.api_key else "✗"
-            _print(f"  {key_ok} {ep.name:16s}  {ep.base_url[:50]}")
+            credential = getattr(ep, "credential_state", "missing")
+            auth = "configured" if credential == "keyed" else (
+                "no-auth" if credential == "no-auth" else "missing"
+            )
+            _print(f"  {auth:10s} {ep.name:16s}  {ep.base_url[:50]}")
         return True
     if action == "route-info":
         return _handle_route_info(last_task_id)
