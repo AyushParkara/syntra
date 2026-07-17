@@ -7,6 +7,10 @@ Stop betting an entire coding task on one opaque model. Syntra is a terminal-fir
 > **Early public beta:** Use it, stress it, and report bugs or improvements. Expect rough edges
 > while the core experience is hardened.
 
+![Syntra terminal cockpit running a JWT authentication task, with planning, execution, review, activity, cost, and model-routing panels.](docs/assets/syntra-jwt-auth-demo.png)
+
+*Syntra's terminal cockpit: plan, execute, review, inspect the activity trail, and see the active model route in one workspace.*
+
 ---
 
 ## The pitch in 10 seconds
