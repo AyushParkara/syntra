@@ -16,6 +16,9 @@ Flow:
 No tool execution, no shell, no file edits yet. This is the cognitive loop only.
 File editing and command execution are deliberately separated and will be added
 as approval-gated layers once the cognitive loop is proven solid.
+
+ponytail: 6K-line monolith. Extract tool dispatch, session management, and
+state transitions into dedicated modules when the file exceeds 7K.
 """
 
 from __future__ import annotations
@@ -4062,29 +4065,9 @@ class Loop:
             return
 
     def _lsp_errors_for(self, lsp, state: TaskState, paths: list) -> str:
-        """Notify the LSP of the current file contents, settle, and return formatted
-        ERROR-severity diagnostics for `paths` ('' when none). Best-effort."""
-        try:
-            from pathlib import Path as _P
-            from .lsp import format_diagnostics, path_to_uri
-            for p in paths:
-                fp = _P(state.workspace_root) / p
-                if fp.is_file():
-                    try:
-                        lsp.did_change(str(fp), fp.read_text(errors="replace"))
-                    except Exception:  # noqa: BLE001
-                        pass
-            drain = getattr(lsp, "_drain", None)
-            if callable(drain):
-                drain()
-            alld = lsp.diagnostics() or {}
-            wanted = {path_to_uri(str(_P(state.workspace_root) / p)) for p in paths}
-            errs = {uri: [d for d in diags if (d.get("severity") == 1)]
-                    for uri, diags in alld.items() if uri in wanted}
-            errs = {u: ds for u, ds in errs.items() if ds}
-            return format_diagnostics(errs) if errs else ""
-        except Exception:  # noqa: BLE001
-            return ""
+        """Return formatted LSP diagnostics for `paths`.
+        ponytail: LSP client (core/lsp.py) deleted. Stubbed. Restore when needed."""
+        return ""
 
     def _run_artifact_verification(self, state: TaskState, config: LoopConfig) -> tuple[bool, str]:
         """Run the verify command in the sandbox; return (ok, summary).
@@ -5531,17 +5514,7 @@ class Loop:
             ctx.state = state    # reviewer has readonly tools (no git commit) — state is harmless/future-proof
 
         user = f"GOAL:\n{state.goal}\n\nEXECUTOR'S SUMMARY (verify it, don't trust it):\n{deliverable}"
-        # Feed real compiler/type diagnostics in, if an LSP client is wired up.
-        lsp = getattr(config, "lsp_client", None)
-        if lsp is not None:
-            try:
-                from .lsp import format_diagnostics
-                diags = format_diagnostics(lsp.diagnostics())
-                if diags and diags != "(no diagnostics)":
-                    user += ("\n\nLANGUAGE-SERVER DIAGNOSTICS (real errors/warnings — "
-                             "if any are errors, this is a FAIL):\n" + diags)
-            except Exception as e:  # noqa: BLE001
-                self._emit("lsp_error", {"error": str(e)[:200]})
+        # ponytail: LSP diagnostics removed with core/lsp.py (YAGNI at v0.1.0).
 
         review_sys = REVIEWER_RESEARCH_SYSTEM if researching else REVIEWER_AGENT_SYSTEM
         messages = [

@@ -6,6 +6,9 @@ Run without installing:
     python3 -m syntra catalog
     python3 -m syntra route planner
 
+ponytail: 5.8K-line monolith. Each `syntra <subcommand>` should live in
+`syntra/cli/commands/<name>.py` when the file exceeds 6K.
+
 Commands:
     verify                            run all smoke checks at once
     catalog                           show model catalog
@@ -1677,41 +1680,16 @@ def cmd_update(args: argparse.Namespace) -> int:
 
 
 def _provider_oauth_config(provider: str):
-    """Read a provider's `oauth` block from providers.json -> DeviceLoginConfig | None."""
-    import json as _json
-    from ..core.registry import ProviderRegistry
-    from ..core.oauth import DeviceLoginConfig
-    cfg_path = ProviderRegistry._resolve_config_path(None)
-    try:
-        raw = _json.loads(Path(cfg_path).read_text())
-    except (FileNotFoundError, _json.JSONDecodeError, OSError):
-        return None
-    for row in raw.get("providers", []):
-        if row.get("name") == provider:
-            o = row.get("oauth")
-            if not o or not o.get("device_auth_url") or not o.get("token_url"):
-                return None
-            return DeviceLoginConfig(
-                device_auth_url=o["device_auth_url"],
-                token_url=o["token_url"],
-                client_id=o.get("client_id", ""),
-                scope=o.get("scope", ""),
-            )
+    """Read a provider's `oauth` block from providers.json.
+    ponytail: OAuth device-code flow (core/oauth.py) deleted. API keys cover 100% at v0.1.0."""
     return None
 
 
 def cmd_login(args: argparse.Namespace) -> int:
-    """Browser login for a provider via the OAuth device-code flow (D1-D2).
-
-    Reads the provider's `oauth` block from providers.json, runs the device flow,
-    and stores the token in the chmod-600 secret store beside the config. Use
-    --refresh to renew using the stored refresh token instead of a full login."""
-    from ..core.oauth import run_device_login, DeviceLogin, OAuthError
-    from ..core.secrets import SecretStore
-    from ..core.registry import resolved_secrets_path
-
-    provider = args.provider
-    config = _provider_oauth_config(provider)
+    """Browser login for a provider via the OAuth device-code flow.
+    ponytail: OAuth device-code flow (core/oauth.py) deleted. Use API keys instead."""
+    _print("error: OAuth login was removed (over-engineered for v0.1.0). Use API keys in providers.json.")
+    return 1
     if config is None:
         _print(f"error: provider {provider!r} has no usable 'oauth' block in providers.json.")
         _print("  add: \"oauth\": {\"device_auth_url\": ..., \"token_url\": ..., \"client_id\": ..., \"scope\": ...}")
@@ -3395,28 +3373,13 @@ def _handle_session_action(action: str, arg: str, last_task_id: str) -> bool:
         _print("  /simplify reviews the diff for cleanup-only improvements (no bug hunt)")
         _print("  run it in the TUI for a live review"); return True
     if action == "browse":
-        from ..core.browser import playwright_available
-        if not playwright_available():
-            _print("  Playwright not installed. Run: pip install playwright && playwright install chromium")
-            return True
-        if not arg:
-            _print("  usage: /browse <url>"); return True
-        from ..core.browser import get_browser
-        try:
-            _print(get_browser().navigate(arg))
-            _print(get_browser().text(1500))
-        except Exception as e:
-            _print(f"  browse error: {e}")
+        # ponytail: browser.py deleted (YAGNI at v0.1.0).
+        _print("  /browse removed — was over-engineered for v0.1.0. Restore when needed.")
         return True
     if action == "preview":
-        # Render a URL / HTML file to a PNG via a headless browser. The CLI has no inline surface,
-        # so we report the PNG path; in the TUI this renders inline (tui2 handler).
-        if not arg:
-            _print("  usage: /preview <url-or-html-file>"); return True
-        from ..core import browser_preview as _bp
-        from pathlib import Path as _P
-        _out = _P.cwd() / ".syntra" / "preview" / "cli.png"
-        ok, msg = _bp.render_to_png(arg, _out)
+        # ponytail: browser_preview.py deleted (YAGNI at v0.1.0).
+        _print("  /preview removed — was over-engineered for v0.1.0. Restore when needed.")
+        return True
         _print(f"  {'rendered → ' + str(_out) if ok else 'could not preview: ' + msg}")
         return True
     if action == "image":
@@ -4677,12 +4640,20 @@ def _make_tui_question_ask(on_event, steering):
 
 def _load_initial_images(paths: list):
     """Convert each --image PATH to a data: URL for the agent's first message.
-    A bad/unsupported file is skipped with a warning (never fatal)."""
+    ponytail: was from ..core.multimodal import data_url_from_file (deleted, YAGNI). Inlined."""
+    import base64
+    def _sniff(data):
+        if data[:8] == b"\x89PNG\r\n\x1a\n": return "image/png"
+        if data[:3] == b"\xff\xd8\xff": return "image/jpeg"
+        if data[:6] in (b"GIF87a", b"GIF89a"): return "image/gif"
+        if data[:4] == b"RIFF" and data[8:12] == b"WEBP": return "image/webp"
+        return None
     out = []
     for p in paths:
         try:
-            from ..core.multimodal import data_url_from_file
-            out.append(data_url_from_file(p))
+            data = Path(p).read_bytes()
+            mime = _sniff(data) or "image/png"
+            out.append(f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}")
         except Exception as e:  # noqa: BLE001
             _print(f"  warning: could not load image {p!r}: {str(e)[:160]}")
     return tuple(out)
@@ -4730,22 +4701,12 @@ def _spawn_mcp_clients(commands: list):
 
 
 def _spawn_lsp_client(command: str, workspace: str):
-    """Spawn the `--lsp <command>` language server and initialize it. Returns the
-    client or None (a failure is non-fatal — diagnostics simply won't be fed in)."""
+    """Spawn the `--lsp <command>` language server and initialize it.
+    ponytail: LSP client (core/lsp.py) deleted. Compile errors via shell commands at v0.1.0."""
     if not command.strip():
         return None
-    import shlex
-    from pathlib import Path as _P
-    try:
-        from ..core.lsp import LSPClient, StdioTransport, path_to_uri
-        client = LSPClient(StdioTransport(shlex.split(command)),
-                           root_uri=path_to_uri(str(_P(workspace).resolve())))
-        client.initialize()
-        _print(f"  [lsp] started: {command.split()[0]}")
-        return client
-    except Exception as e:  # noqa: BLE001
-        _print(f"  warning: LSP server {command!r} failed to start: {str(e)[:160]}")
-        return None
+    _print("  [lsp] not available — core/lsp.py was removed (over-engineered for v0.1.0)")
+    return None
 
 
 def unstreamed_step_results(step_results, streamed_answer: str) -> list:
@@ -5360,8 +5321,9 @@ def _make_tui_runner(resume_id: str = ""):
                                  for a in (state.get("_attachments", []) or [])
                                  if a.get("kind") == "text"]
                 if _resume_texts:
-                    from ..core.multimodal import context_block_from_texts
-                    _resume_hist.append(("user", context_block_from_texts(_resume_texts).rstrip()))
+                    block = "\n\n".join(
+                        f"Attached file: {name}\n```\n{content}\n```" for name, content in _resume_texts)
+                    _resume_hist.append(("user", block))
                 state.pop("_attachments", None)   # consume ALL staged attachments this turn
                 try:
                     result = loop.resume(tid, config=_resume_cfg,
@@ -5455,8 +5417,9 @@ def _make_tui_runner(resume_id: str = ""):
         # in this scope; a local of that name would shadow it and break earlier references.
         augmented_goal = goal
         if _att_texts:
-            from ..core.multimodal import context_block_from_texts
-            augmented_goal = context_block_from_texts(_att_texts) + goal
+            block = "\n\n".join(
+                f"Attached file: {name}\n```\n{content}\n```" for name, content in _att_texts)
+            augmented_goal = block + "\n\n" + goal
         if autopilot_n > 1:
             result = loop.autopilot(augmented_goal, workspace_root=str(Path.cwd()),
                                     config=cfg, max_iterations=autopilot_n,
@@ -5493,21 +5456,18 @@ def _make_tui_runner(resume_id: str = ""):
     run_goal.get_toggle = lambda key, default=None: state.get(key, default)  # type: ignore[attr-defined]
 
     def _attach_image(src):
-        """Stage an attachment for the NEXT message (#127). Accepts:
-          • (bytes, mime) from the clipboard → an image (vision channel);
-          • a file PATH of ANY type — images ride the vision channel; text-ish files (code,
-            prose, config, logs, data) are read and injected as a context block every model
-            reads; a real binary is refused with a clear reason.
-        Returns (ok, label_or_error). The TUI shows a 📎 chip from the label."""
+        """Stage an attachment for the NEXT message (#127).
+        ponytail: was from ..core import multimodal (deleted, YAGNI). Inlined.
+        """
+        import base64
         try:
-            from ..core import multimodal
             from pathlib import Path as _P
-            # ONE ordered attachment list (#127/#128) so removal-by-index is trivial and the TUI's
-            # chip order == the engine's order. Each record: {"kind","label", + url|(name,content)}.
             atts = state.setdefault("_attachments", [])
             if isinstance(src, tuple):           # (bytes, mime) from the clipboard → image
                 data, mime = src
-                url = multimodal.data_url_from_bytes(data, mime=mime)
+                mime = mime or "image/png"
+                b64 = base64.b64encode(data).decode("ascii")
+                url = f"data:{mime};base64,{b64}"
                 label = f"clipboard image ({(mime or 'image').split('/')[-1]}, {len(data)//1024} KB)"
                 atts.append({"kind": "image", "label": label, "url": url})
                 return (True, label)

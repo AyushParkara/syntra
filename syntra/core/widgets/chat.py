@@ -199,8 +199,12 @@ class ChatWidget(Widget):
         start, _end, partial = tok
         files = self._workspace_files()
         if partial:
-            from ..fuzzy import fuzzy_filter
-            ms = [m.text for m in fuzzy_filter(partial, files)]
+            words = partial.lower().split()
+            if len(words) == 1:
+                import difflib
+                ms = difflib.get_close_matches(partial, files, n=20, cutoff=0.3)
+            else:
+                ms = [f for f in files if all(w in f.lower() for w in words)][:20]
         else:
             ms = list(files)
         ms = ms[:50]

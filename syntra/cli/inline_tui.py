@@ -207,10 +207,16 @@ def run_inline(run_goal, *, startup_note_fn=None, live_rows: int = 3) -> int:
                                 src = arg
                                 if not arg:                       # no path → clipboard image
                                     try:
-                                        from ..core.clipboard import read_image
-                                        src = read_image()
-                                    except Exception:  # noqa: BLE001
-                                        src = None
+                                        from PIL import ImageGrab
+                                        import tempfile, os
+                                        im = ImageGrab.grabclipboard()
+                                        if im is not None:
+                                            fd, path = tempfile.mkstemp(suffix=".png", prefix="syntra-clip-")
+                                            os.close(fd)
+                                            im.save(path, "PNG")
+                                            src = path
+                                    except Exception:
+                                        pass
                                     if src is None:
                                         _commit_text("no image on the clipboard (or no clipboard tool)")
                                         src = False
