@@ -17,7 +17,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from syntra.core.fuzzy import fuzzy_filter
+# ponytail: was from syntra.core.fuzzy import fuzzy_filter (deleted, YAGNI).
+# Using difflib.get_close_matches for basic fuzzy matching.
 
 
 @dataclass
@@ -36,10 +37,13 @@ class SelectList:
         a score_fn the order is unchanged (insertion order)."""
         if not self.query:
             if self.score_fn is not None:
-                # stable sort by score desc -> ties/unseen keep insertion order
                 return sorted(self.items, key=lambda it: -float(self.score_fn(it)))
             return list(self.items)
-        return [m.text for m in fuzzy_filter(self.query, self.items)]
+        words = self.query.lower().split()
+        if len(words) == 1:
+            import difflib
+            return difflib.get_close_matches(self.query, self.items, n=len(self.items), cutoff=0.3)
+        return [c for c in self.items if all(w in c.lower() for w in words)]
 
     def _clamp(self) -> None:
         n = len(self.filtered())

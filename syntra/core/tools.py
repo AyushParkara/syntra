@@ -196,23 +196,36 @@ def _glob(args: dict, ctx: ToolContext) -> str:
     return "\n".join(sorted(out)) if out else "(no matches)"
 
 
+def _fuzzy_filter_multi(query, candidates, limit=20):
+    """Multi-word substring filter. Each whitespace-separated word must match.
+    Single-word queries use difflib; multi-word sorts by SequenceMatcher ratio."""
+    import difflib
+    words = query.lower().split()
+    if len(words) == 1:
+        return difflib.get_close_matches(query, candidates, n=limit, cutoff=0.3)
+    scored = []
+    for c in candidates:
+        low = c.lower()
+        if all(w in low for w in words):
+            ratio = difflib.SequenceMatcher(None, query.lower(), low).ratio()
+            scored.append((ratio, c))
+    scored.sort(key=lambda x: -x[0])
+    return [c for _, c in scored[:limit]]
+
+
 def _find_file(args: dict, ctx: ToolContext) -> str:
     """Fuzzy-rank workspace files by relevance to a query (best matches first).
-
-    Reuses our subsequence fuzzy matcher (core/fuzzy). Unlike glob's literal
-    pattern, this scores partial/scattered matches, so 'edmd' finds 'edit_md.py'.
     """
     query = (args.get("query") or "").strip()
     if not query:
         return "error: 'query' required"
     from .files import list_workspace_files
-    from .fuzzy import fuzzy_filter
     try:
         files = list_workspace_files(ctx.workspace_root)
     except Exception:  # noqa: BLE001
         files = []
     limit = int(args.get("limit", 20) or 20)
-    matches = [m.text for m in fuzzy_filter(query, files)][:max(1, limit)]
+    matches = _fuzzy_filter_multi(query, files, limit=limit)
     return "\n".join(matches) if matches else "(no matches)"
 
 
@@ -682,34 +695,10 @@ def _websearch(args: dict, ctx: ToolContext) -> str:
     return run_web_search(q, ctx.web_search)
 
 
-def _youtube_transcript(args: dict, ctx: ToolContext) -> str:
-    """Fetch a YouTube video's title/description + FULL transcript so the agent can read and
-    explain what it teaches. NOTE: this is the spoken words only — it cannot see on-screen visuals
-    (code/slides/whiteboard/demos); the heuristic flags when the core looks visual."""
-    from .youtube import fetch_video
-    from .video_understand import visual_signals
-    url = (args.get("url") or "").strip()
-    if not url:
-        return "error: 'url' required"
-    v = fetch_video(url, want_lang=(args.get("lang") or None))
-    head = f"TITLE: {v.title}\nCHANNEL: {v.author}\nLENGTH: {v.length_s}s\nDESCRIPTION:\n{(v.description or '')[:1500]}"
-    if not v.ok:
-        from .youtube import innertube_key_help
-        note = {
-            "no_captions": "This video has NO captions/transcript available.",
-            "potoken_gated": "This video's transcript is gated (needs a browser token) — not retrievable here.",
-            "missing_innertube_key": "YouTube transcript access is not configured; " + innertube_key_help() + ".",
-        }.get(v.status, f"Could not get a transcript ({v.status}).")
-        return head + "\n\n[transcript unavailable] " + note
-    vg = visual_signals(v.transcript, v.title, v.description, v.length_s, len(v.segments))
-    warn = ""
-    if v.kind == "asr":
-        warn += "\n[warning] auto-generated captions — may contain transcription errors."
-    if vg.level in ("high", "some"):
-        warn += (f"\n[warning] visual content ({vg.level}): {vg.reason} — the transcript alone may "
-                 "not capture the video's point; the user may need to watch it.")
-    body = f"\n\nTRANSCRIPT ({v.lang}, {v.kind}, {v.word_count} words):\n{v.transcript}"
-    return head + warn + body
+# ponytail: _youtube_transcript deleted. YouTube transcript extraction
+# (core/youtube.py + core/video_understand.py) was speculative at v0.1.0:
+# requires a manual API key, handles PoToken walls, and the agent can't
+# see the video anyway. Restore when a user requests /watch.
 
 
 def _exec_command(args: dict, ctx: ToolContext) -> str:
@@ -740,19 +729,41 @@ def _close_process(args: dict, ctx: ToolContext) -> str:
     return ctx.process_manager().close(sid)
 
 
+def _inline_data_url(path):
+    """Read a local file and return a base64 data: URL with sniffed MIME."""
+    import base64
+    data = path.read_bytes()
+    mime = sniff_mime(data) or "application/octet-stream"
+    return f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}"
+
+
+def sniff_mime(data: bytes) -> str | None:
+    """Detect image type from magic bytes."""
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
 def _view_image(args: dict, ctx: ToolContext) -> str:
     """Load a workspace image so the model can SEE it on the next turn (vision). Also asks the
     TUI to render it inline for the USER, so 'view' shows it to both sides."""
-    from .multimodal import data_url_from_file, ImageError
+    # ponytail: was from .multimodal import data_url_from_file (deleted, YAGNI).
+    # Inlined the 5 essential lines here.
     rel = args.get("path", "")
     full = _safe_path(ctx.workspace_root, rel)
     if not full.is_file():
         return f"error: no such image: {rel}"
     try:
-        ctx.pending_images.append(data_url_from_file(full))
-    except ImageError as e:
+        ctx.pending_images.append(_inline_data_url(full))
+    except (OSError, ValueError) as e:
         return f"error: {e}"
-    if ctx.on_image:                                  # render inline for the user too
+    if ctx.on_image:
         try: ctx.on_image(str(full))
         except Exception: pass  # noqa: BLE001
     return f"loaded image {rel} — shown to you (and rendered inline for the user)"
@@ -782,53 +793,12 @@ def _show_image(args: dict, ctx: ToolContext) -> str:
 
 def _preview(args: dict, ctx: ToolContext) -> str:
     """Render a URL / local HTML file / raw HTML string IN the terminal: a headless desktop browser
-    screenshots it to a PNG, then that PNG is shown inline via the same seam show_image uses (so it
-    paints as half-blocks on terminals without a graphics protocol). Local file paths are confined
-    to the workspace. Returns a short note; a clear message when no browser is available."""
-    from . import browser_preview as _bp
-    url = (args.get("url") or "").strip()
-    path = (args.get("path") or "").strip()
-    html = args.get("html") or ""
-    target = url or path or html
-    if not target:
-        return "error: give one of url / path / html to preview"
-    if url:
-        from urllib.parse import urlparse
-        parsed = urlparse(url)
-        if parsed.scheme not in ("http", "https") or not parsed.netloc:
-            return "error: preview url must be http(s); use the confined path=... argument for workspace files"
-        try:
-            from .web import _ssrf_check
-            ssrf = _ssrf_check(url, bool(getattr(ctx, "allow_private_fetch", False)))
-            if ssrf:
-                return ssrf
-        except Exception as e:  # noqa: BLE001 - fail closed for a network render
-            return f"error: could not validate preview url: {e}"
-    # A local file path is workspace-confined (same stance as show_image); url/html pass through.
-    if path and not url and not html:
-        try:
-            full = _safe_path(ctx.workspace_root, path)
-        except ToolError as e:
-            return f"error: {e}"
-        if not full.is_file():
-            return f"error: no such file: {path}"
-        target = str(full)
-    # Render into a workspace-local scratch dir under .syntra/ (never /tmp).
-    import hashlib
-    out_dir = Path(ctx.workspace_root) / ".syntra" / "preview"
-    key = hashlib.sha1(str(target).encode("utf-8", "replace")).hexdigest()[:12]
-    out_png = out_dir / f"{key}.png"
-    ok, msg = _bp.render_to_png(target, out_png, scratch_dir=out_dir)
-    if not ok:
-        return f"could not preview: {msg}"
-    if ctx.on_image is None:
-        return f"rendered to {out_png} — open it in an image viewer (no inline surface here)"
-    try:
-        ctx.on_image(str(out_png))
-    except Exception as e:  # noqa: BLE001
-        return f"error: could not display the preview: {e}"
-    _what = url or (path if (path and not url) else "the HTML")
-    return f"previewed {_what} inline in the terminal"
+    screenshots it to a PNG, then that PNG is shown inline via the same seam show_image uses.
+    """
+    # ponytail: stubbed. browser_preview.py was deleted (YAGNI at v0.1.0).
+    # Requires a Chromium binary on PATH + terminal_image for rendering.
+    # Restore when browser automation is requested.
+    return "error: preview is not available in this build (was over-engineered for v0.1.0)"
 
 
 def _generate_image(args: dict, ctx: ToolContext) -> str:
@@ -838,7 +808,14 @@ def _generate_image(args: dict, ctx: ToolContext) -> str:
     the registry, routing to an image-capable model); None => no image backend configured. The
     bytes are saved to the given path (or a derived one) via the same confinement as other writes,
     so the TUI can then render it inline."""
-    from .multimodal import sniff_mime
+    # ponytail: was from .multimodal import sniff_mime (deleted, YAGNI).
+    # Inlined the 4-line sniff_mime here.
+    def _sniff(data):
+        if data[:8] == b"\x89PNG\r\n\x1a\n": return "image/png"
+        if data[:3] == b"\xff\xd8\xff": return "image/jpeg"
+        if data[:6] in (b"GIF87a", b"GIF89a"): return "image/gif"
+        if data[:4] == b"RIFF" and data[8:12] == b"WEBP": return "image/webp"
+        return None
     prompt = (args.get("prompt") or "").strip()
     if not prompt:
         return "error: 'prompt' required"
@@ -847,11 +824,11 @@ def _generate_image(args: dict, ctx: ToolContext) -> str:
     size = (args.get("size") or "1024x1024").strip()
     try:
         data = ctx.image_gen(prompt, size)
-    except Exception as e:  # noqa: BLE001 - surface as text, never crash the loop
+    except Exception as e:  # noqa: BLE001
         return f"error: image generation failed: {e}"
     if not data:
         return "error: image generation returned no data"
-    mime = sniff_mime(data) or "image/png"
+    mime = _sniff(data) or "image/png"
     ext = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp"}.get(mime, "png")
     rel = (args.get("path") or "").strip() or f"generated_image.{ext}"
     try:
@@ -1001,12 +978,7 @@ def default_tools() -> dict[str, Tool]:
              {"type": "object", "properties": {"session": _str}, "required": ["session"]},
              "exec", _close_process),
     ]}
-    # Playwright browser tools (optional — empty dict if playwright not installed)
-    try:
-        from .browser import browser_tools
-        tools.update(browser_tools())
-    except Exception:  # noqa: BLE001 - never break the tool set
-        pass
+    # ponytail: browser_tools removed (core/browser.py deleted, YAGNI at v0.1.0).
     # An OPTIONAL, private integration may live OUTSIDE this package and is loaded
     # only if present in the local checkout. Shipped Syntra contains no such code;
     # this is a no-op for an installed wheel.

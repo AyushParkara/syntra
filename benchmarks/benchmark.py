@@ -1,15 +1,12 @@
 """Cost-per-success benchmark (Phase 4, proof of value).
 
+ponytail: moved from syntra/core/benchmark.py. Dev-infra, not runtime.
+Production code should never import this module.
+
 The product thesis (req B1): a well-orchestrated mid-tier stack beats one
 expensive model used blindly, on COST-PER-SUCCESS. This module measures exactly
 that: run a fixed task set under (a) the routed Syntra stack and (b) a single
 pinned expensive model for every role, then compare $-per-passing-task.
-
-Split for honesty + testability:
-- The report math (cost_per_success, deltas, win/lose) is PURE -> unit-tested.
-- run_suite() drives real loop.run() calls -> exercised with a fake provider in
-  tests; meaningful numbers require live providers (run via a script, not the
-  unit suite, per PLAN Phase 4).
 """
 
 from __future__ import annotations
@@ -21,7 +18,7 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class BenchOutcome:
     task: str
-    mode: str            # "routed" | "baseline"
+    mode: str
     passed: bool
     cost_usd: float
     in_tokens: int = 0
@@ -46,7 +43,6 @@ class ModeSummary:
         return (self.passes / self.n) if self.n else 0.0
 
     def cost_per_success(self) -> float:
-        """Total cost divided by passing tasks. inf if nothing passed."""
         return (self.total_cost_usd / self.passes) if self.passes else math.inf
 
     def to_dict(self) -> dict:
@@ -78,14 +74,12 @@ class BenchReport:
     baseline: ModeSummary
 
     def cost_per_success_delta(self) -> float:
-        """baseline - routed. Positive => routed is cheaper per success."""
         b, r = self.baseline.cost_per_success(), self.routed.cost_per_success()
         if math.isinf(b) or math.isinf(r):
             return 0.0
         return round(b - r, 6)
 
     def routed_wins(self) -> bool:
-        """Routed wins if it is at least as successful AND cheaper per success."""
         if self.routed.success_rate() < self.baseline.success_rate():
             return False
         return self.routed.cost_per_success() <= self.baseline.cost_per_success()
@@ -129,13 +123,6 @@ def build_report(outcomes) -> BenchReport:
 
 def run_suite(make_loop, tasks, *, workspace_root: str,
               routed_config, baseline_config) -> list[BenchOutcome]:
-    """Run each task under routed + baseline configs; collect outcomes.
-
-    make_loop() -> a fresh Loop (so stats/state don't bleed between modes).
-    routed_config / baseline_config are LoopConfig instances (baseline pins the
-    single expensive model for all roles). Failures count as not-passed at their
-    measured cost (so a crash doesn't silently help a mode).
-    """
     outcomes: list[BenchOutcome] = []
     for task in tasks:
         for mode, cfg in (("routed", routed_config), ("baseline", baseline_config)):

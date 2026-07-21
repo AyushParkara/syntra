@@ -257,10 +257,15 @@ def _serialize_message(m: "ChatMessage") -> dict:
     if m.role == "tool":
         return {"role": "tool", "tool_call_id": m.tool_call_id, "content": m.content}
     out: dict = {"role": m.role, "content": m.content}
-    # Vision: when images are attached, content becomes a multi-part array.
+    # ponytail: was from ..core.multimodal import content_parts (deleted, YAGNI).
+    # Inline the 5-line content array builder here.
     if m.images:
-        from ..core.multimodal import content_parts
-        out["content"] = content_parts(m.content, m.images)
+        parts = []
+        if m.content:
+            parts.append({"type": "text", "text": m.content})
+        for img in m.images:
+            parts.append({"type": "image_url", "image_url": {"url": str(img)}})
+        out["content"] = parts
     if m.tool_calls:
         out["tool_calls"] = [
             {"id": tc.id, "type": "function",

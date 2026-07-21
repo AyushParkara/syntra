@@ -391,13 +391,12 @@ class ProviderRegistry:
                 if token_lookup is not None:
                     tok = token_lookup(row["name"]) or ""
                 else:
-                    # B6: auto-refresh a stored browser-login token if it has expired,
-                    # using this provider's own oauth block (token_url + client_id).
-                    from .oauth import config_from_oauth_block, ensure_fresh_token
+                    # ponytail: OAuth device-code flow (core/oauth.py) deleted.
+                    # At v0.1.0, API keys cover 100% of users. The OAuth module
+                    # was never tested against a live provider. Restore when needed.
                     from .secrets import SecretStore
                     _store = SecretStore(config_path.parent / "secrets.json")
-                    tok = ensure_fresh_token(_store, row["name"],
-                                             config_from_oauth_block(row["oauth"])) or ""
+                    tok = _store.get(row["name"]) or ""
                 if tok:
                     keys.append(tok)
             if not keys:

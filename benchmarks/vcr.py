@@ -1,20 +1,12 @@
 """Record/replay test fixtures for provider calls (#167) — dev-infra.
 
+ponytail: moved from syntra/core/vcr.py. This is dev-infra, not runtime.
+Production code should never import this module.
+
 Provider tests want to exercise the REAL request/response shape without hitting the
 network on every run (slow, flaky, costs tokens, needs a key). VCR records a real
 provider `chat(...)` response to a hashed on-disk "cassette", then replays it offline
 on the next identical request.
-
-- `cassette_key(model_id, messages, **knobs)` — a stable digest of the request, so
-  the same call always maps to the same cassette (and any change to model/messages/
-  knobs maps to a different one).
-- `record(dir, key, result)` / `load(dir, key)` — serialize a `ChatResult` to/from
-  `<dir>/<key>.json` (tool_calls + token counts + finish_reason preserved).
-- `ReplayProvider(dir, record_with=None)` — a drop-in provider shim: a cassette HIT
-  returns the recorded `ChatResult` (no network); a MISS records via `record_with`
-  (a real provider) when given, else raises `CassetteMiss`.
-
-Dependency-free, deterministic. Intended for tests + offline dev, not the hot path.
 """
 
 from __future__ import annotations
@@ -29,7 +21,6 @@ class CassetteMiss(RuntimeError):
 
 
 def _msg_repr(m) -> dict:
-    """Stable, hashable view of a ChatMessage (only the fields that change the response)."""
     return {
         "role": getattr(m, "role", ""),
         "content": getattr(m, "content", ""),
@@ -43,11 +34,9 @@ def _msg_repr(m) -> dict:
 
 
 def cassette_key(model_id: str, messages, **knobs) -> str:
-    """Deterministic digest of a chat request. Order-stable JSON → sha256 (16 hex)."""
     payload = {
         "model": str(model_id or ""),
         "messages": [_msg_repr(m) for m in (messages or [])],
-        # only knobs that actually change the response; sorted for stability
         "knobs": {k: knobs[k] for k in sorted(knobs)},
     }
     blob = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
@@ -56,8 +45,7 @@ def cassette_key(model_id: str, messages, **knobs) -> str:
 
 def _to_dict(result) -> dict:
     return {
-        "_schema": "syntra.vcr_cassette",
-        "_schema_version": 1,
+        "_schema": "syntra.vcr_cassette", "_schema_version": 1,
         "text": result.text,
         "input_tokens": int(result.input_tokens),
         "output_tokens": int(result.output_tokens),
@@ -75,7 +63,7 @@ def _to_dict(result) -> dict:
 
 
 def _from_dict(d: dict):
-    from ..providers.openai_compat import ChatResult, ToolCall
+    from syntra.providers.openai_compat import ChatResult, ToolCall
     return ChatResult(
         text=d.get("text", ""),
         input_tokens=int(d.get("input_tokens", 0) or 0),
@@ -98,7 +86,6 @@ def _path(dir_: "str | Path", key: str) -> Path:
 
 
 def load(dir_: "str | Path", key: str):
-    """Return the recorded ChatResult for `key`, or None if there's no cassette."""
     try:
         d = json.loads(_path(dir_, key).read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError, OSError):
@@ -109,20 +96,13 @@ def load(dir_: "str | Path", key: str):
 
 
 def record(dir_: "str | Path", key: str, result) -> None:
-    """Write `result` to the cassette for `key` (atomic; parent dirs created)."""
-    from . import fsutil
-    # Shared hardened primitive (#258). mode=None → umask default (cassettes are test fixtures,
-    # no secrets). temp+fsync+os.replace + O_NOFOLLOW symlink refusal come for free.
-    fsutil.write_atomic_bytes(
+    from syntra.core.fsutil import write_atomic_bytes
+    write_atomic_bytes(
         _path(dir_, key), json.dumps(_to_dict(result), indent=2, ensure_ascii=False).encode("utf-8"),
         mode=None)
 
 
 class ReplayProvider:
-    """A provider shim that replays cassettes. `chat(...)` mirrors OpenAICompatibleProvider:
-    a cassette HIT returns the recorded ChatResult offline; a MISS records via `record_with`
-    (a real provider) when supplied, else raises CassetteMiss."""
-
     def __init__(self, cassette_dir: "str | Path", *, record_with=None):
         self.dir = Path(cassette_dir)
         self.record_with = record_with
@@ -134,7 +114,7 @@ class ReplayProvider:
             return hit
         if self.record_with is None:
             raise CassetteMiss(
-                f"no cassette for {model_id!r} (key {key}) and no recorder — "
+                f"no cassette for {model_id!r} (key {key}) and no recorder "
                 f"run once with a real provider as record_with to capture it")
         result = self.record_with.chat(model_id, messages, **knobs)
         record(self.dir, key, result)

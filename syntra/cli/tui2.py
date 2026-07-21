@@ -3,6 +3,9 @@
 Modular widget-driven layout. Every panel is a Widget in a split tree.
 Users can toggle, resize, and rearrange panels. Keyboard-first.
 
+ponytail: 7.2K-line monolith. Extract per-widget files from
+syntra/core/widgets/ when the file exceeds 8K.
+
 Key bindings:
     Enter       = send
     Shift+Enter = newline (or Ctrl-O)
@@ -323,11 +326,8 @@ def run_tui2(run_goal, *, startup_note_fn=None) -> int:
     # needs cbreak + to read the reply). The terminal reports its truth (kitty/sixel/none) instead
     # of env guessing — so images render sharply where supported and fall back cleanly where not.
     # Cached on `state` and reused at every image paint site (never re-probe per image).
-    try:
-        from ..core import terminal_image as _ti_probe
-        _img_caps = _ti_probe.caps_for_terminal()
-    except Exception:  # noqa: BLE001 - probing must never block launch
-        _img_caps = None
+    # ponytail: terminal_image removed (was over-engineered for v0.1.0)
+    _img_caps = None
 
     registry = WidgetRegistry()
     _register_all(registry, workspace=os.getcwd())
@@ -1030,47 +1030,8 @@ def run_tui2(run_goal, *, startup_note_fn=None) -> int:
             _tty_fd = 1
 
         def _paint_image_overlay():
-            """Paint the active inline image AFTER the text frame: curses owns the cells, we
-            write the graphics escape straight to the tty into a reserved region at the bottom of
-            the chat area. Idempotent per image id (don't re-transmit the same image every frame);
-            deletes a previously-drawn Kitty image when the overlay changes/clears (else it smears
-            on scroll). No-op when there's no overlay or the terminal can't do graphics."""
-            ov = image_overlay
-            cur_id = ov.get("id") or 0
-            # nothing to show, or already transmitted this exact image → leave it.
-            if not ov.get("path"):
-                # clear a previously-drawn kitty image so it doesn't linger.
-                if ov.get("drawn_id"):
-                    try:
-                        from ..core.terminal_image import kitty_delete
-                        os.write(_tty_fd, kitty_delete(ov["drawn_id"]).encode())
-                    except Exception:  # noqa: BLE001
-                        pass
-                    ov["drawn_id"] = None
-                return
-            if ov.get("drawn_id") == cur_id:
-                return                              # already on screen, don't re-blast it
-            try:
-                from ..core import terminal_image as _ti
-                from pathlib import Path as _P
-                data = _P(ov["path"]).read_bytes()
-                caps = ov.get("caps") or state.get("img_caps") or _ti.detect_caps()
-                rows, cols = stdscr.getmaxyx()
-                # reserve a box: ~60% of the height, full chat width-ish, near the bottom.
-                box_rows = max(3, min(rows - 4, int(rows * 0.55)))
-                box_cols = max(10, cols - 4)
-                seq, used = _ti.render_image(data, caps, cols=box_cols, rows=box_rows,
-                                             image_id=cur_id, label=_P(ov["path"]).name,
-                                             image_path=str(ov["path"]))
-                if caps.protocol == _ti.NONE:
-                    return                          # placeholder is shown as a chat line instead
-                # position cursor at the top of the reserved region (a few rows above the input).
-                y = max(1, rows - 2 - box_rows)
-                os.write(_tty_fd, f"\x1b[{y};1H".encode())   # move cursor (1-based)
-                os.write(_tty_fd, seq.encode() if isinstance(seq, str) else seq)
-                ov["drawn_id"] = cur_id
-            except Exception:  # noqa: BLE001 - image paint must never break the TUI
-                pass
+            # ponytail: terminal_image removed — inline image paint disabled for v0.1.0
+            pass
 
         def _open_image_viewer(path: str) -> bool:
             """Open `path` full-size in the OS image viewer (xdg-open/open/start). Detached, output
@@ -1090,77 +1051,31 @@ def run_tui2(run_goal, *, startup_note_fn=None) -> int:
                 return False
 
         def _show_image(path: str, *, note: str = "") -> None:
-            """Show an image the SELF-MANAGING way (user's rule), using the cached startup probe:
-              • terminal CAN render (kitty/iterm/sixel) → paint sharp inline; user opens full-size
-                manually (:open) since inline is already readable.
-              • terminal CANNOT (no graphics) → still show the best inline preview, AND AUTO-open the
-                full image in the OS viewer, because inline here isn't readable.
-            One place so every trigger (engine show_image, /view, click, generated image) behaves the
-            same."""
-            from ..core import terminal_image as _ti
+            # ponytail: terminal_image removed — open externally via OS viewer
             from pathlib import Path as _P
             p = _P(path)
             if not p.is_file():
                 if chat_w:
                     chat_w.add("system", f"no such image: {path}")
                 return
-            caps = state.get("img_caps") or _ti.detect_caps()
-            can_render = caps.protocol in (_ti.KITTY, _ti.ITERM2, _ti.SIXEL)
-            if can_render:
-                # terminal has a real graphics engine → paint sharp inline; open is MANUAL (:open).
-                image_overlay["path"] = str(p)
-                image_overlay["caps"] = caps
-                image_overlay["id"] = (image_overlay.get("id") or 0) + 1
-                image_overlay["drawn_id"] = None
-                if chat_w:
-                    chat_w.add("system", f"🖼 {p.name} (rendered inline · :open for full-size)"
-                               + (f" — {note}" if note else ""))
-            else:
-                # NO graphics engine → do NOT paint a blurry, useless inline render (that was the
-                # "still tried to render + looked bad" noise). Just a clean note + AUTO-open the
-                # real viewer, which is the readable path here.
-                image_overlay["path"] = None            # clear any prior inline image
-                image_overlay["id"] = (image_overlay.get("id") or 0) + 1
-                image_overlay["drawn_id"] = None
-                opened = _open_image_viewer(str(p))
-                if chat_w:
-                    if opened:
-                        chat_w.add("system", f"🖼 {p.name} — opened full-size in your image viewer "
-                                   f"(this terminal can't render images inline; run Syntra in "
-                                   f"kitty/Ghostty/WezTerm for sharp inline images)")
-                    else:
-                        chat_w.add("system", f"🖼 {p.name} — /open to view full-size "
-                                   f"(no display to auto-open onto)")
+            opened = _open_image_viewer(str(p))
+            if chat_w:
+                if opened:
+                    chat_w.add("system", f"🖼 {p.name} — opened full-size in your image viewer")
+                else:
+                    chat_w.add("system", f"🖼 {p.name} — /open to view (no display)")
 
         def _preview_inline(path: str, label: str = "") -> None:
-            """Paint a browser-preview PNG INLINE in the terminal — HALF-BLOCKS included. Separate
-            from _show_image ON PURPOSE: a rendered web page (flat bg + text/boxes) is readable in
-            half-blocks, whereas photos look bad — so images stay on the external-viewer path while
-            /preview shows the page right here (the user's explicit ask). Uses the terminal's real
-            detected caps: kitty/iterm2/sixel → sharp; truecolor → half-block; only a genuinely
-            colorless terminal falls back to a note + external open."""
-            from ..core import terminal_image as _ti
+            # ponytail: terminal_image removed — open externally via OS viewer
             from pathlib import Path as _P
             p = _P(path)
             if not p.is_file():
                 if chat_w: chat_w.add("system", f"preview render missing: {path}")
                 return
-            caps = state.get("img_caps") or _ti.detect_caps()
-            if caps.protocol == _ti.NONE:
-                # no truecolor/graphics at all → can't render readably here; open externally.
-                opened = _open_image_viewer(str(p))
-                if chat_w:
-                    chat_w.add("system", (f"🖼 preview of {label or p.name} — opened in your image "
-                                          f"viewer (this terminal has no color rendering)") if opened
-                               else f"🖼 preview saved to {p.name} — /open to view")
-                return
-            image_overlay["path"] = str(p)
-            image_overlay["caps"] = caps          # real caps → half-block on a truecolor VTE
-            image_overlay["id"] = (image_overlay.get("id") or 0) + 1
-            image_overlay["drawn_id"] = None
+            opened = _open_image_viewer(str(p))
             if chat_w:
-                chat_w.add("system", f"🖼 preview of {label or p.name} (rendered inline · via "
-                           f"{caps.protocol})")
+                chat_w.add("system", (f"🖼 preview of {label or p.name} — opened in your image viewer") if opened
+                           else f"🖼 preview saved to {p.name} — /open to view")
 
         def _sync_refresh():
             if _sync_on:
@@ -2756,29 +2671,8 @@ def run_tui2(run_goal, *, startup_note_fn=None) -> int:
             toasts.show(f"removed {label}", "info", ttl=1.4)
 
         def _attach_clipboard():
-            """Pull an image off the system clipboard and stage it. read_image() tries every
-            reader this OS supports (wl-paste/xclip/CopyQ/GTK on Linux, pngpaste/osascript on mac,
-            PowerShell on Windows). Some readers shell out / spawn a short-lived helper, which can
-            take a few seconds when the clipboard holds NO image — so we run it on a BACKGROUND
-            thread and post the result back, NEVER freezing the UI on Ctrl+V (the bug: read_image
-            blocked the main loop ~5s). If no reader can read an image here,
-            image_paste_unavailable_reason points at /attach (no install pitch)."""
-            def _work():
-                try:
-                    from ..core.clipboard import read_image, image_paste_unavailable_reason
-                    got = read_image()
-                except Exception:  # noqa: BLE001
-                    got = None
-                if got is not None:
-                    _post(lambda g=got: _attach_src(g))   # (bytes, mime) → 📎 chip on the UI thread
-                    return
-                try:
-                    _why = image_paste_unavailable_reason()
-                except Exception:  # noqa: BLE001
-                    _why = ""
-                msg = _why or "no image on the clipboard — copy an image first, or /attach <path>"
-                _post(lambda m=msg, w=_why: toasts.show(m, "info", ttl=4.0 if w else 2.0))
-            _run_bg("clipboard image", _work)
+            # ponytail: clipboard module removed (was over-engineered for v0.1.0)
+            toasts.show("clipboard image paste removed — use /attach <path> instead", "info", ttl=3.0)
             return True
 
         # ── plan card ──
@@ -3025,25 +2919,8 @@ def run_tui2(run_goal, *, startup_note_fn=None) -> int:
 
             # /copy [n] — copy the last answer, or fenced code block #n, to the clipboard (M5)
             if action == "copy":
-                from ..core.clipboard import copy as _clip_copy
-                from ..core.tui_model import extract_code_blocks
-                _blocks = extract_code_blocks(chat_w.transcript.messages) if chat_w else []
-                if arg.strip().isdigit():
-                    _n = int(arg.strip())
-                    if 1 <= _n <= len(_blocks):
-                        _clip_copy(_blocks[_n - 1])
-                        toasts.show(f"copied block [{_n}]", "success")
-                    else:
-                        toasts.show(f"no block [{_n}] — {len(_blocks)} available", "error")
-                else:
-                    _last = ""
-                    if chat_w:
-                        _last = next((m.text for m in reversed(chat_w.transcript.messages)
-                                      if m.role in ("assistant", "assistant_stream")), "")
-                    if _last:
-                        _clip_copy(_last); toasts.show("copied last answer", "success")
-                    else:
-                        toasts.show("nothing to copy yet", "info")
+                # ponytail: clipboard module removed (was over-engineered for v0.1.0)
+                toasts.show("clipboard copy removed — use native terminal selection instead", "info", ttl=3.0)
                 return
 
             # /blocks — list the indexed code blocks for /copy <n> (M5)
@@ -3463,29 +3340,8 @@ def run_tui2(run_goal, *, startup_note_fn=None) -> int:
 
             # /browse — open a URL in a headless browser, show page text
             if action == "browse":
-                from ..core.browser import playwright_available
-                if not playwright_available():
-                    _info_popup("browse", "Playwright not installed.\n\nRun:\n  pip install playwright\n  playwright install chromium")
-                    return
-                if not arg:
-                    if chat_w: chat_w.add("system", "usage: /browse <url>")
-                    return
-                import threading as _thr
-                def _browse_work(url):
-                    # F5: this runs on a worker thread — route every chat_w.add through _post()
-                    # so it doesn't mutate transcript.messages while the main thread renders it.
-                    try:
-                        from ..core.browser import get_browser
-                        b = get_browser()
-                        nav = b.navigate(url)
-                        text = b.text(2000)
-                        if chat_w:
-                            _post(lambda: chat_w.add("system", nav))
-                            _post(lambda: chat_w.add("system", f"```\n{text}\n```"))
-                    except Exception as e:
-                        if chat_w: _post(lambda e=e: chat_w.add("system", f"browse error: {e}"))
-                _thr.Thread(target=_browse_work, args=(arg,), daemon=True).start()
-                if chat_w: chat_w.add("system", f"browsing {arg}...")
+                # ponytail: browser module removed (was over-engineered for v0.1.0)
+                if chat_w: chat_w.add("system", "/browse removed — use the native browser to view pages")
                 return
 
             # /image — attach an image for the model to see next message
@@ -3514,27 +3370,8 @@ def run_tui2(run_goal, *, startup_note_fn=None) -> int:
             # /view <path> — render an image INLINE in the terminal (kitty/iterm2/sixel), or
             # bare /view to clear the current one.
             if action == "preview":
-                # Render a URL / HTML file / html string IN the terminal via a headless browser →
-                # PNG → HALF-BLOCK inline. UNLIKE images (photos look bad in half-blocks, so
-                # _show_image sends those to the external viewer), a rendered PAGE is mostly flat
-                # bg + text/boxes → half-blocks are readable, and the user explicitly wants the page
-                # shown IN the terminal. So /preview uses the overlay with the REAL detected caps
-                # (HALFBLOCK on a truecolor VTE) directly, NOT the image _show_image gate.
-                if not arg:
-                    if chat_w: chat_w.add("system", "usage: /preview <url or html file>")
-                    return
-                import hashlib as _hl
-                from pathlib import Path as _P
-                _od = _P.cwd() / ".syntra" / "preview"
-                _op = _od / (_hl.sha1(arg.encode("utf-8", "replace")).hexdigest()[:12] + ".png")
-                def _prev_work(target=arg, out=_op, od=_od):
-                    from ..core import browser_preview as _bp
-                    ok, msg = _bp.render_to_png(target, out, scratch_dir=od)
-                    if ok:
-                        _post(lambda p=str(out): _preview_inline(p, target))
-                    else:
-                        _post(lambda m=msg: chat_w and chat_w.add("system", f"could not preview: {m}"))
-                _run_bg("preview", _prev_work)
+                # ponytail: browser_preview removed (was over-engineered for v0.1.0)
+                if chat_w: chat_w.add("system", "/preview removed — use the native browser to view pages")
                 return
 
             if action == "view":
@@ -3763,53 +3600,11 @@ def run_tui2(run_goal, *, startup_note_fn=None) -> int:
                 _run_bg("search", _ws_search)
                 return
 
-            # /watch <youtube-url> — "watch" a video: pull its full transcript + description,
-            # explain what it teaches, and honestly flag when the core is VISUAL (so you should
-            # actually watch it). A bare path (no YT url) keeps the old session-marker behavior.
+            # /watch <youtube-url> — was "watch" a video (removed)
             if action == "watch":
-                from ..core.youtube import video_id as _yt_id
-                if arg and _yt_id(arg):
-                    if chat_w: chat_w.add("system", f"● watching (reading transcript of) {arg}")
-                    def _watch_work(url=arg):
-                        try:
-                            from ..core.youtube import fetch_video
-                            from ..core.video_understand import understand_video
-                            v = fetch_video(url)
-                            if not v.ok:
-                                from ..core.youtube import innertube_key_help
-                                msg = {"no_captions": "this video has no captions/transcript.",
-                                       "potoken_gated": "this video's transcript is gated (needs a browser token) — can't read it here.",
-                                       "missing_innertube_key": "YouTube transcript access is not configured; " + innertube_key_help() + "."}.get(
-                                       v.status, f"couldn't get a transcript ({v.status}).")
-                                _post(lambda m=msg, t=v.title: chat_w and chat_w.add("system", f"⚠ {t or url}: {m}\n  I can't 'watch' it — try opening it yourself."))
-                                return
-                            # explain via the engine's one-shot model call (same seam /feature uses)
-                            def _caller(msgs):
-                                sys = msgs[0].content; usr = msgs[1].content
-                                res = controller._run_goal(f"{sys}\n\n{usr}", lambda _t, _r="tool": None, None)
-                                for s in getattr(res, "state", type("X", (), {"plan": []})).plan:
-                                    if getattr(s, "status", "") == "done" and (getattr(s, "result", "") or "").strip():
-                                        return type("R", (), {"text": s.result.strip()})
-                                return type("R", (), {"text": ""})
-                            u = understand_video(v, caller=_caller)
-                            hdr = (f"📺 {v.title}  ·  {v.author}  ·  {v.length_s//60}m{v.length_s%60:02d}s\n"
-                                   f"   transcript: {v.lang or '?'} · {'auto-captions' if v.kind=='asr' else 'human captions'} · {v.word_count} words")
-                            parts = [hdr, "", u.explanation]
-                            if v.kind == "asr":
-                                parts.append("\n⚠ auto-generated captions — names/technical terms may be mistranscribed.")
-                            if u.watch_advice:
-                                parts.append("\n⚠ " + u.watch_advice)
-                            parts.append("\nℹ this is the SPOKEN transcript only — on-screen text/code/slides/visuals aren't captured.")
-                            _post(lambda p=parts: chat_w and chat_w.add("assistant", "\n".join(p)))
-                        except Exception as e:  # noqa: BLE001
-                            _post(lambda e=e: chat_w and chat_w.add("system", f"watch failed: {e}"))
-                    _run_bg("watch video", _watch_work)
-                    return
-                # F36: bare /watch records a path of interest for THIS session (a hint you can
-                # reference). NOT a live filesystem watcher.
+                # ponytail: youtube/video_understand modules removed (over-engineered for v0.1.0)
                 state["watch_path"] = arg or os.getcwd()
-                if chat_w: chat_w.add("system", f"noted path of interest: {state['watch_path']}\n  (a session marker — not live file monitoring)")
-                toasts.show("path noted", "info")
+                if chat_w: chat_w.add("system", f"/watch removed — noted path: {state['watch_path']}\n  (session marker only)")
                 return
             if action == "unwatch":
                 state.pop("watch_path", None)
@@ -4801,30 +4596,25 @@ def run_tui2(run_goal, *, startup_note_fn=None) -> int:
                 out_lines = [rows_by_y[y] for y in sorted(rows_by_y)]
                 text = "\n".join(s.rstrip() for s in out_lines).strip("\n")
             if text:
-                from ..core.clipboard import copy as _clip_copy
-                _clip_copy(text)
-                toasts.show(f"copied {len(text)} chars", "success")
+                # ponytail: clipboard removed — printed to stdout instead
+                toasts.show(f"text ({len(text)} chars) selected — use native terminal copy", "info", ttl=2.0)
             return bool(text)
 
         def _copy_last_reply():
-            """Copy the most recent assistant message text (not screen rows).
-            Sets a brief highlight on the copied message so the user sees what was copied."""
+            # ponytail: clipboard removed (was over-engineered for v0.1.0)
             if not chat_w:
                 return
             for i, m in reversed(list(enumerate(chat_w.transcript.messages))):
                 if getattr(m, "role", "").startswith("assistant"):
-                    from ..core.clipboard import copy as _clip_copy
                     txt = getattr(m, "text", "") or ""
-                    _clip_copy(txt)
                     _copy_highlight["msg_idx"] = i
                     _copy_highlight["until"] = _time.time() + 1.0  # flash for 1 second
-                    toasts.show(f"copied ({len(txt)} chars)", "success")
+                    toasts.show(f"copied ({len(txt)} chars) — use native terminal copy", "info", ttl=2.0)
                     return
             toasts.show("no reply to copy", "error")
 
         def _copy_whole_chat():
-            """Copy the ENTIRE conversation (every message, role-labelled) to the clipboard
-            — no fiddly drag needed for the whole thing."""
+            # ponytail: clipboard removed (was over-engineered for v0.1.0)
             if not chat_w:
                 return
             _labels = {"user": "you", "assistant": "syntra", "assistant_stream": "syntra"}
@@ -4837,12 +4627,10 @@ def run_tui2(run_goal, *, startup_note_fn=None) -> int:
                 if role in _labels or role == "system":
                     out.append(f"{_labels.get(role, role)}: {txt}")
                 else:
-                    out.append(txt)              # trace lines verbatim
+                    out.append(txt)
             blob = "\n".join(out).strip()
             if blob:
-                from ..core.clipboard import copy as _clip_copy
-                _clip_copy(blob)
-                toasts.show(f"copied the whole chat ({len(blob)} chars)", "success")
+                toasts.show(f"chat ({len(blob)} chars) — use native terminal copy", "info", ttl=2.0)
             else:
                 toasts.show("nothing to copy yet", "error")
 
@@ -5040,12 +4828,8 @@ def run_tui2(run_goal, *, startup_note_fn=None) -> int:
                     return
             except Exception:  # noqa: BLE001 - fall through to copy on any trouble
                 pass
-            try:
-                from ..core.clipboard import copy as _clip_copy
-                _clip_copy(target)
-                toasts.show(f"copied {target}", "success", ttl=1.4)
-            except Exception:  # noqa: BLE001
-                pass
+            # ponytail: clipboard removed (was over-engineered for v0.1.0)
+            toasts.show(f"opening {target} — use native terminal copy", "info", ttl=1.4)
 
         def _click_at(rects, mx, my):
             nonlocal focused
@@ -5088,23 +4872,16 @@ def run_tui2(run_goal, *, startup_note_fn=None) -> int:
                             if _grp is not None:
                                 chat_w.action_feed.toggle_group(_grp)
                                 break
-                    # #132: click a code-block header ("[n] lang   ⧉ copy") → copy that block's
-                    # RAW content (no gutter/borders) to the clipboard. This is the TUI-native
-                    # clean copy people will actually use (vs typing /copy n, which they won't).
+                    # #132: click a code-block header ("[n] lang   ⧉ copy") — removed clipboard copy
                     if name == "chat":
                         _row = _screen_text[my] if 0 <= my < len(_screen_text) else ""
                         import re as _re_cb
                         _m = _re_cb.search(r"\[(\d+)\]\s+\S+\s+⧉ copy", _row)
                         if _m:
                             try:
-                                from ..core.tui_model import extract_code_blocks
-                                from ..core.clipboard import copy as _clip_copy
-                                _blocks = extract_code_blocks(chat_w.transcript.messages) if chat_w else []
-                                _bn = int(_m.group(1))
-                                if 1 <= _bn <= len(_blocks):
-                                    _clip_copy(_blocks[_bn - 1])
-                                    toasts.show(f"copied block [{_bn}]", "success", ttl=1.4)
-                                    break
+                                # ponytail: clipboard removed — use native terminal copy instead
+                                toasts.show("use native terminal copy for code blocks", "info", ttl=1.4)
+                                break
                             except Exception:  # noqa: BLE001
                                 pass
                     # M7: click a URL / file:line in the transcript → open it. The recorded
@@ -5204,9 +4981,8 @@ def run_tui2(run_goal, *, startup_note_fn=None) -> int:
             text = getattr(target, "text", "") or ""
 
             if action_id == "copy":
-                from ..core.clipboard import copy as _clip_copy
-                _clip_copy(text)
-                toasts.show(f"copied {len(text)} chars", "success")
+                # ponytail: clipboard removed — use native terminal copy
+                toasts.show(f"use native terminal copy ({len(text)} chars)", "info", ttl=1.4)
 
             elif action_id == "collapse":
                 cset = chat_w.transcript.collapsed
@@ -6477,20 +6253,17 @@ def run_tui2(run_goal, *, startup_note_fn=None) -> int:
                             body = body.split("[201~", 1)[0]
                         body = body.rstrip("\x1b")
                         if focused == "chat" and chat_w and body:
-                            # Drag-and-drop a FILE (any type, #127): a terminal pastes the file PATH
-                            # (not bytes) when you drag a file in. If the paste resolves to a single
-                            # existing file, ATTACH it (_attach_src routes image→vision, text→context,
-                            # binary→clear refusal) instead of inserting the path as text.
-                            _dpath = None
-                            try:
-                                from ..core.multimodal import looks_like_file_path
-                                _dpath = looks_like_file_path(body)
-                            except Exception:  # noqa: BLE001
+                            # ponytail: multimodal/looks_like_file_path removed — simple path check instead
+                            from pathlib import Path as _Path
+                            _dpath = body.strip()
+                            if not _dpath:
+                                _dpath = None
+                            elif not _Path(_dpath).expanduser().exists():
                                 _dpath = None
                             if _dpath:
                                 _attach_src(_dpath)
                             else:
-                                chat_w.editor.paste(body)  # → "[paste #N]" chip (or inlined if small)
+                                chat_w.editor.paste(body)
                                 toasts.show("pasted", "info", ttl=0.8)
                         last_esc = False
                         _draw(); continue
